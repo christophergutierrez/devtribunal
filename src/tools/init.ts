@@ -62,6 +62,59 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+interface ScaffoldResult {
+  results: string[];
+  written: number;
+  skipped: number;
+}
+
+async function scaffoldSkills(
+  repoPath: string,
+  skillTemplatesDir: string
+): Promise<ScaffoldResult> {
+  const targetDir = join(repoPath, ".claude", "commands", "dt");
+  const results: string[] = [];
+  let written = 0;
+  let skipped = 0;
+
+  let templateFiles: string[];
+  try {
+    templateFiles = (await readdir(skillTemplatesDir)).filter((f) =>
+      f.endsWith(".md")
+    );
+  } catch {
+    return { results: ["  No skill templates found"], written: 0, skipped: 0 };
+  }
+
+  await mkdir(targetDir, { recursive: true });
+
+  for (const filename of templateFiles) {
+    const templateContent = await readFile(
+      join(skillTemplatesDir, filename),
+      "utf-8"
+    );
+    const targetPath = join(targetDir, filename);
+
+    if (await fileExists(targetPath)) {
+      const existingContent = await readFile(targetPath, "utf-8");
+      if (existingContent === templateContent) {
+        results.push(`  SKIPPED ${filename} (already current)`);
+        skipped++;
+        continue;
+      }
+      results.push(`  SKIPPED ${filename} (modified by user — won't overwrite)`);
+      skipped++;
+      continue;
+    }
+
+    await writeFile(targetPath, templateContent, "utf-8");
+    results.push(`  WROTE   ${filename}`);
+    written++;
+  }
+
+  return { results, written, skipped };
+}
+
 export async function executeInit(
   input: InitInput,
   builtinAgentsDir: string
@@ -154,22 +207,30 @@ export async function executeInit(
     written++;
   }
 
+  // Scaffold skills
+  const skillTemplatesDir = join(builtinAgentsDir, "..", "templates", "skills");
+  const skillResult = await scaffoldSkills(input.repo_path, skillTemplatesDir);
+
   const summary = [
     `Languages detected: ${[...languages].join(", ")}`,
-    `Target: ${targetDir}`,
     "",
+    `## Agents → ${targetDir}`,
     ...results,
-    "",
     `${written} written, ${skipped} skipped`,
+    "",
+    `## Skills → ${join(input.repo_path, ".claude", "commands", "dt")}`,
+    ...skillResult.results,
+    `${skillResult.written} written, ${skillResult.skipped} skipped`,
   ];
 
-  if (written > 0) {
+  if (written > 0 || skillResult.written > 0) {
     summary.push(
       "",
-      "Agent files are now in your repo. You can:",
-      "  - Edit them to customize review criteria for your team",
-      "  - Commit them to version control",
-      "  - Add source: custom to frontmatter for files you create from scratch"
+      "You can:",
+      "  - Edit agent files to customize review criteria for your team",
+      "  - Use /dt:full, /dt:incremental-pr-ready, /dt:incremental-staged, /dt:incremental-wip",
+      "  - Commit both devtribunal_agents/ and .claude/commands/dt/ to version control",
+      "  - Add source: custom to agent frontmatter for files you create from scratch"
     );
   }
 

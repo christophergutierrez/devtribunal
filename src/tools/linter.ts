@@ -1,15 +1,30 @@
 import { exec } from "node:child_process";
 import type { RecommendedTool, LinterFinding } from "../types.js";
+import { expandRunnerAlternatives } from "../runner-alternatives.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-function checkInstalled(tool: RecommendedTool, timeoutMs = 5000): Promise<boolean> {
-  if (!tool.check) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    exec(tool.check, { timeout: timeoutMs }, (err) => {
-      resolve(!err);
-    });
-  });
+/**
+ * Check if a tool is installed, trying package-runner alternatives.
+ * Returns the runner prefix that works (e.g. "bunx"), or null if not found.
+ */
+function checkInstalled(
+  tool: RecommendedTool,
+  timeoutMs = 5000
+): Promise<string | null> {
+  if (!tool.check) return Promise.resolve(null);
+
+  const alternatives = expandRunnerAlternatives(tool.check);
+
+  return (async () => {
+    for (const alt of alternatives) {
+      const ok = await new Promise<boolean>((resolve) => {
+        exec(alt.cmd, { timeout: timeoutMs }, (err) => resolve(!err));
+      });
+      if (ok) return alt.runner;
+    }
+    return null;
+  })();
 }
 
 function execLinter(
@@ -184,15 +199,22 @@ export async function runLinters(
   const runnableTools = tools.filter((t) => t.run);
 
   for (const tool of runnableTools) {
-    // Check if installed
-    const installed = await checkInstalled(tool);
-    if (!installed) {
+    // Check if installed — returns the working runner prefix, or null
+    const runner = await checkInstalled(tool);
+    if (runner === null) {
       skipped.push(tool.name);
       continue;
     }
 
     // Substitute {file} placeholder — quote the path for shell safety
-    const command = tool.run.replace(/\{file\}/g, `"${filePath}"`);
+    let command = tool.run.replace(/\{file\}/g, `"${filePath}"`);
+
+    // If a different runner was detected, swap it in the run command too
+    if (runner !== "system") {
+      const alts = expandRunnerAlternatives(command);
+      const match = alts.find((a) => a.runner === runner);
+      if (match) command = match.cmd;
+    }
 
     // Execute
     const result = await execLinter(command, timeoutMs);

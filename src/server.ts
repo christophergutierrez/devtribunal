@@ -104,9 +104,9 @@ export function createServer(
 
     // Management tools
     tools.push({
-      name: "init_agents",
+      name: "dt_init",
       description:
-        "Initialize devtribunal_agents/ directory in a target repo with relevant agent definitions",
+        "Initialize devtribunal in a target repo — scaffolds agent definitions and Claude Code skill commands",
       inputSchema: initInputJsonSchema,
     });
 
@@ -124,7 +124,7 @@ export function createServer(
     const { name, arguments: args } = request.params;
 
     // Handle management tools
-    if (name === "init_agents") {
+    if (name === "dt_init") {
       const parsed = InitInputSchema.safeParse(args);
       if (!parsed.success) {
         return {

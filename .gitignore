@@ -6,3 +6,4 @@ bun.lock
 bun.lockb
 *.tsbuildinfo
 devtribunal_agents/
+.claude/commands/dt/

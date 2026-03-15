@@ -1,6 +1,7 @@
 import { exec } from "node:child_process";
 import { z } from "zod";
 import type { AgentDefinition, RecommendedTool } from "../types.js";
+import { expandRunnerAlternatives } from "../runner-alternatives.js";
 
 export const CheckToolsInputSchema = z.object({
   repo_path: z
@@ -17,9 +18,10 @@ interface ToolCheckResult {
   purpose: string;
   installed: boolean;
   version?: string;
+  runner?: string;
 }
 
-function checkCommand(cmd: string, timeoutMs = 5000): Promise<string | null> {
+function execCommand(cmd: string, timeoutMs = 5000): Promise<string | null> {
   return new Promise((resolve) => {
     exec(cmd, { timeout: timeoutMs }, (err, stdout) => {
       if (err) {
@@ -31,6 +33,24 @@ function checkCommand(cmd: string, timeoutMs = 5000): Promise<string | null> {
   });
 }
 
+/**
+ * Try a check command and its package-runner alternatives.
+ * Returns the version string and which runner succeeded, or null.
+ */
+async function checkCommand(
+  cmd: string,
+  timeoutMs = 5000
+): Promise<{ version: string; runner: string } | null> {
+  const alternatives = expandRunnerAlternatives(cmd);
+  for (const alt of alternatives) {
+    const version = await execCommand(alt.cmd, timeoutMs);
+    if (version !== null) {
+      return { version, runner: alt.runner };
+    }
+  }
+  return null;
+}
+
 export async function executeCheckTools(
   agents: Map<string, AgentDefinition>
 ): Promise<{ content: string; isError: boolean }> {
@@ -39,12 +59,13 @@ export async function executeCheckTools(
   for (const [, agent] of agents) {
     for (const tool of agent.recommended_tools) {
       checks.push(
-        checkCommand(tool.check).then((version) => ({
+        checkCommand(tool.check).then((result) => ({
           agent: agent.name,
           tool: tool.name,
           purpose: tool.purpose,
-          installed: version !== null,
-          version: version ?? undefined,
+          installed: result !== null,
+          version: result?.version,
+          runner: result?.runner,
         }))
       );
     }
@@ -76,8 +97,9 @@ export async function executeCheckTools(
   if (installed.length > 0) {
     lines.push("Installed:");
     for (const r of installed) {
+      const via = r.runner && r.runner !== "system" ? ` [via ${r.runner}]` : "";
       lines.push(
-        `  ✓ ${r.tool} (${r.purpose})${r.version ? " — " + r.version : ""}`
+        `  ✓ ${r.tool} (${r.purpose})${via}${r.version ? " — " + r.version : ""}`
       );
     }
   }

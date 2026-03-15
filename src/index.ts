@@ -29,7 +29,7 @@ async function main() {
     `devtribunal v0.0.1\n` +
     `  ${specialists.length} specialists: ${specialists.join(", ")}\n` +
     `  ${orchestrators.length} orchestrators: ${orchestrators.join(", ")}\n` +
-    `  + 2 management tools (init_agents, check_tools)\n`
+    `  + 2 management tools (dt_init, check_tools)\n`
   );
 
   const server = createServer(agents, agentsDir);
