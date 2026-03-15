@@ -12,12 +12,18 @@ severity_focus:
 recommended_tools:
   - name: phpstan
     check: "phpstan --version"
+    run: "phpstan analyse --error-format json {file}"
+    output_format: json
     purpose: "Static analysis and type checking"
   - name: php-cs-fixer
     check: "php-cs-fixer --version"
+    run: ""
+    output_format: ""
     purpose: "Code style enforcement and formatting"
   - name: psalm
     check: "psalm --version"
+    run: "psalm --output-format json {file}"
+    output_format: json
     purpose: "Static analysis with focus on type safety"
 source: devtribunal
 ---

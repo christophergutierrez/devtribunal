@@ -12,13 +12,19 @@ severity_focus:
 recommended_tools:
   - name: dart analyze
     check: "dart analyze --help"
+    run: "dart analyze {file}"
+    output_format: text
     purpose: "Static analysis and lint checking"
   - name: dart format
     check: "dart format --help"
+    run: ""
+    output_format: ""
     purpose: "Code formatting enforcement"
   - name: flutter analyze
     check: "flutter analyze --help"
-    purpose: "Flutter-specific static analysis"
+    run: ""
+    output_format: ""
+    purpose: "Flutter-specific static analysis (project-level)"
 source: devtribunal
 ---
 

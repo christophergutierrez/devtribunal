@@ -12,12 +12,18 @@ severity_focus:
 recommended_tools:
   - name: eslint
     check: "npx eslint --version"
+    run: "npx eslint --format json {file}"
+    output_format: json
     purpose: "Linting and style enforcement"
   - name: tsc
     check: "npx tsc --version"
-    purpose: "Type checking"
+    run: ""
+    output_format: ""
+    purpose: "Type checking (project-level only)"
   - name: biome
     check: "npx biome --version"
+    run: "npx biome lint --reporter json {file}"
+    output_format: json
     purpose: "Fast linting and formatting"
 source: devtribunal
 ---

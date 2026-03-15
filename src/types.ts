@@ -27,7 +27,19 @@ export interface AgentDefinition {
 export interface RecommendedTool {
   name: string;
   check: string;
+  run: string;
+  output_format: string;
   purpose: string;
+}
+
+export interface LinterFinding {
+  tool: string;
+  file: string;
+  line: number | null;
+  column: number | null;
+  severity: string;
+  message: string;
+  rule: string | null;
 }
 
 export interface ReviewResult {

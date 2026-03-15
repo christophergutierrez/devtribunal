@@ -13,13 +13,19 @@ severity_focus:
 recommended_tools:
   - name: clang-tidy
     check: "clang-tidy --version"
+    run: "clang-tidy {file} -- 2>&1"
+    output_format: text
     purpose: "Static analysis and modernization checks"
   - name: cppcheck
     check: "cppcheck --version"
+    run: "cppcheck --template=gcc --enable=all {file} 2>&1"
+    output_format: text
     purpose: "Deep static analysis for bugs and undefined behavior"
   - name: valgrind
     check: "valgrind --version"
-    purpose: "Runtime memory error and leak detection"
+    run: ""
+    output_format: ""
+    purpose: "Runtime memory error and leak detection (requires compiled binary)"
 source: devtribunal
 ---
 

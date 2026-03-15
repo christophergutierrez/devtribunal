@@ -13,12 +13,18 @@ severity_focus:
 recommended_tools:
   - name: spotbugs
     check: "spotbugs -version"
-    purpose: "Static analysis for bug patterns"
+    run: ""
+    output_format: ""
+    purpose: "Static analysis for bug patterns (project-level, needs compiled classes)"
   - name: checkstyle
     check: "checkstyle --version"
+    run: "checkstyle -f xml {file}"
+    output_format: text
     purpose: "Code style and convention enforcement"
   - name: pmd
     check: "pmd --version"
+    run: "pmd check -f json -R rulesets/java/quickstart.xml -d {file}"
+    output_format: json
     purpose: "Source code analysis for common flaws"
 source: devtribunal
 ---

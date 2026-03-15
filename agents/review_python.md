@@ -11,12 +11,18 @@ severity_focus:
 recommended_tools:
   - name: mypy
     check: "mypy --version"
+    run: "mypy --output-format json {file}"
+    output_format: json
     purpose: "Static type checking"
   - name: ruff
     check: "ruff --version"
+    run: "ruff check --output-format json {file}"
+    output_format: json
     purpose: "Fast linting and formatting"
   - name: pylint
     check: "pylint --version"
+    run: "pylint --output-format json {file}"
+    output_format: json
     purpose: "Deep code analysis and linting"
 source: devtribunal
 ---

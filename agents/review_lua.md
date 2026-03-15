@@ -12,12 +12,18 @@ severity_focus:
 recommended_tools:
   - name: luacheck
     check: "luacheck --version"
+    run: "luacheck --formatter plain {file}"
+    output_format: text
     purpose: "Linting, global detection, and static analysis"
   - name: selene
     check: "selene --version"
+    run: "selene {file}"
+    output_format: text
     purpose: "Advanced linting with custom rule support"
   - name: stylua
     check: "stylua --version"
+    run: ""
+    output_format: ""
     purpose: "Code formatting and style enforcement"
 source: devtribunal
 ---

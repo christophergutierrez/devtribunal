@@ -12,13 +12,19 @@ severity_focus:
 recommended_tools:
   - name: clippy
     check: "cargo clippy --version"
+    run: "cargo clippy --message-format json 2>&1"
+    output_format: json
     purpose: "Linting and idiomatic pattern enforcement"
   - name: rustfmt
     check: "rustfmt --version"
+    run: ""
+    output_format: ""
     purpose: "Code formatting"
   - name: cargo-audit
     check: "cargo audit --version"
-    purpose: "Dependency vulnerability scanning"
+    run: ""
+    output_format: ""
+    purpose: "Dependency vulnerability scanning (project-level)"
 source: devtribunal
 ---
 

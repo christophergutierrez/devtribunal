@@ -11,12 +11,18 @@ severity_focus:
 recommended_tools:
   - name: buf
     check: "buf --version"
+    run: "buf lint {file}"
+    output_format: text
     purpose: "Schema linting, breaking change detection, and dependency management"
   - name: protoc
     check: "protoc --version"
+    run: ""
+    output_format: ""
     purpose: "Protocol Buffers compiler and validation"
   - name: buf_lint
     check: "buf lint --help"
+    run: "buf lint {file}"
+    output_format: text
     purpose: "Lint rules for protobuf style and correctness"
 source: devtribunal
 ---

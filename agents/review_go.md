@@ -11,12 +11,18 @@ severity_focus:
 recommended_tools:
   - name: golangci-lint
     check: "golangci-lint --version"
+    run: "golangci-lint run --out-format json {file}"
+    output_format: json
     purpose: "Comprehensive linting and static analysis"
   - name: go vet
     check: "go vet --help"
+    run: "go vet {file}"
+    output_format: text
     purpose: "Built-in static analysis for suspicious constructs"
   - name: staticcheck
     check: "staticcheck --version"
+    run: "staticcheck -f json {file}"
+    output_format: json
     purpose: "Advanced static analysis for bugs and simplifications"
 source: devtribunal
 ---

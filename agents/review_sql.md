@@ -12,12 +12,18 @@ severity_focus:
 recommended_tools:
   - name: sqlfluff
     check: "sqlfluff version"
+    run: "sqlfluff lint --format json {file}"
+    output_format: json
     purpose: "SQL linting and style enforcement"
   - name: pgformatter
     check: "pg_format --version"
+    run: ""
+    output_format: ""
     purpose: "PostgreSQL-aware SQL formatting"
   - name: sqitch
     check: "sqitch --version"
+    run: ""
+    output_format: ""
     purpose: "Database change management and migration tracking"
 source: devtribunal
 ---

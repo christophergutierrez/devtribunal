@@ -16,6 +16,8 @@ export function parseAgent(filePath: string, raw: string): AgentDefinition {
     (t: Record<string, string>) => ({
       name: t.name ?? "",
       check: t.check ?? "",
+      run: t.run ?? "",
+      output_format: t.output_format ?? "",
       purpose: t.purpose ?? "",
     })
   );

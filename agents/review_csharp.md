@@ -12,12 +12,18 @@ severity_focus:
 recommended_tools:
   - name: dotnet-format
     check: "dotnet format --version"
+    run: ""
+    output_format: ""
     purpose: "Code formatting and style enforcement"
   - name: roslyn-analyzers
     check: "dotnet list package --include-transitive | grep Analyzers"
-    purpose: "Static analysis via Roslyn analyzer packages"
+    run: ""
+    output_format: ""
+    purpose: "Static analysis via Roslyn analyzer packages (project-level)"
   - name: roslynator
     check: "dotnet tool list -g | grep roslynator"
+    run: "roslynator analyze {file}"
+    output_format: text
     purpose: "Extended Roslyn-based code analysis and refactoring"
 source: devtribunal
 ---
