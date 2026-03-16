@@ -74,6 +74,16 @@ export function createServer(
   builtinAgents: Map<string, AgentDefinition>,
   builtinAgentsDir: string
 ): Server {
+  const agentCache = new Map<string, Map<string, AgentDefinition>>();
+
+  async function getAgents(resolvedDir: string): Promise<Map<string, AgentDefinition>> {
+    const cached = agentCache.get(resolvedDir);
+    if (cached) return cached;
+    const agents = await getAgents(resolvedDir);
+    agentCache.set(resolvedDir, agents);
+    return agents;
+  }
+
   const server = new Server(
     { name: "devtribunal", version: "0.0.1" },
     { capabilities: { tools: {} } }
@@ -161,7 +171,7 @@ export function createServer(
           "directory"
         );
         if (resolvedDir !== builtinAgentsDir) {
-          agents = await loadAllAgents(resolvedDir);
+          agents = await getAgents(resolvedDir);
         }
       }
 
@@ -217,7 +227,7 @@ export function createServer(
     );
     let agents = builtinAgents;
     if (resolvedDir !== builtinAgentsDir) {
-      agents = await loadAllAgents(resolvedDir);
+      agents = await getAgents(resolvedDir);
     }
 
     const agent = agents.get(name);

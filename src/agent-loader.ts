@@ -1,26 +1,43 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, basename, dirname } from "node:path";
+import { z } from "zod";
 import matter from "gray-matter";
 import type { AgentDefinition, AgentRole, RecommendedTool } from "./types.js";
+
+const RecommendedToolSchema = z.object({
+  name: z.string().default(""),
+  check: z.string().default(""),
+  run: z.string().default(""),
+  output_format: z.string().default(""),
+  purpose: z.string().default(""),
+});
+
+const AgentFrontmatterSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().default(""),
+  role: z.enum(["specialist", "orchestrator"]).default("specialist"),
+  languages: z.array(z.string()).default([]),
+  severity_focus: z.array(z.string()).default([]),
+  recommended_tools: z.array(RecommendedToolSchema).default([]),
+});
 
 export function parseAgent(filePath: string, raw: string): AgentDefinition {
   const { data, content } = matter(raw);
 
-  const name = data.name ?? basename(filePath, ".md");
-  const description = data.description ?? "";
-  const role: AgentRole = data.role === "orchestrator" ? "orchestrator" : "specialist";
-  const languages: string[] = data.languages ?? [];
-  const severity_focus: string[] = data.severity_focus ?? [];
+  const parsed = AgentFrontmatterSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid agent definition in ${filePath}: ${parsed.error.message}`
+    );
+  }
 
-  const recommended_tools: RecommendedTool[] = (data.recommended_tools ?? []).map(
-    (t: Record<string, string>) => ({
-      name: t.name ?? "",
-      check: t.check ?? "",
-      run: t.run ?? "",
-      output_format: t.output_format ?? "",
-      purpose: t.purpose ?? "",
-    })
-  );
+  const frontmatter = parsed.data;
+  const name = frontmatter.name ?? basename(filePath, ".md");
+  const description = frontmatter.description;
+  const role: AgentRole = frontmatter.role;
+  const languages: string[] = frontmatter.languages;
+  const severity_focus: string[] = frontmatter.severity_focus;
+  const recommended_tools: RecommendedTool[] = frontmatter.recommended_tools;
 
   // Split body into system prompt and checklist sections
   const checklistMarker = "## Checklist";
@@ -92,10 +109,12 @@ export async function loadAllAgents(
     return agents;
   }
 
-  for (const entry of entries) {
-    if (!entry.endsWith(".md")) continue;
-    const agentPath = join(agentsDir, entry);
-    const agent = await loadAgent(agentPath);
+  const mdFiles = entries.filter((e) => e.endsWith(".md"));
+  const loaded = await Promise.all(
+    mdFiles.map((entry) => loadAgent(join(agentsDir, entry)))
+  );
+
+  for (const agent of loaded) {
     agents.set(agent.name, agent);
   }
 
