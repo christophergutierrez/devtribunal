@@ -39,19 +39,43 @@ export function parseAgent(filePath: string, raw: string): AgentDefinition {
   const severity_focus: string[] = frontmatter.severity_focus;
   const recommended_tools: RecommendedTool[] = frontmatter.recommended_tools;
 
-  // Split body into system prompt and checklist sections
+  // Split body into system prompt, checklist, and output format sections
+  // Expected order: body → ## Checklist → ## Output Format
   const checklistMarker = "## Checklist";
+  const outputFormatMarker = "## Output Format";
+
   const checklistIndex = content.indexOf(checklistMarker);
+  const outputFormatIndex = content.indexOf(outputFormatMarker);
 
   let system_prompt: string;
   let checklist: string;
+  let output_format: string;
 
-  if (checklistIndex >= 0) {
-    system_prompt = content.slice(0, checklistIndex).trim();
-    checklist = content.slice(checklistIndex + checklistMarker.length).trim();
+  // Determine the end of system_prompt (first marker found, or end of content)
+  const firstMarker = [checklistIndex, outputFormatIndex]
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b)[0];
+
+  if (firstMarker !== undefined) {
+    system_prompt = content.slice(0, firstMarker).trim();
   } else {
     system_prompt = content.trim();
+  }
+
+  // Extract checklist (between ## Checklist and ## Output Format, or end)
+  if (checklistIndex >= 0) {
+    const checklistStart = checklistIndex + checklistMarker.length;
+    const checklistEnd = outputFormatIndex > checklistIndex ? outputFormatIndex : content.length;
+    checklist = content.slice(checklistStart, checklistEnd).trim();
+  } else {
     checklist = "";
+  }
+
+  // Extract output format (everything after ## Output Format)
+  if (outputFormatIndex >= 0) {
+    output_format = content.slice(outputFormatIndex + outputFormatMarker.length).trim();
+  } else {
+    output_format = "";
   }
 
   return {
@@ -63,6 +87,7 @@ export function parseAgent(filePath: string, raw: string): AgentDefinition {
     recommended_tools,
     system_prompt,
     checklist,
+    output_format,
   };
 }
 

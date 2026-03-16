@@ -39,74 +39,9 @@ export function buildOrchestratePrompt(
     parts.push(context);
   }
 
-  parts.push("\n## Required Output Format\n");
-
-  if (agent.name === "architect") {
-    parts.push(`Respond with a JSON object matching this exact schema:
-
-\`\`\`json
-{
-  "agent": "architect",
-  "cross_cutting": [
-    {
-      "theme": "Name of cross-cutting concern",
-      "severity": "critical | high | medium | low",
-      "related_findings": ["agent:file:line references"],
-      "observation": "What pattern you see across findings",
-      "recommendation": "Holistic fix addressing the root cause"
-    }
-  ],
-  "specialist_overrides": [
-    {
-      "original": "agent:file:line reference",
-      "action": "escalate | downgrade | dismiss",
-      "reason": "Why this finding should be re-evaluated"
-    }
-  ],
-  "summary": "High-level synthesis of code health"
-}
-\`\`\`
-
-Rules:
-- Return ONLY the JSON object, no surrounding text
-- Cross-cutting concerns should span multiple findings or files
-- Only override specialist findings when you have strong architectural reasons
-- Be specific — reference actual findings, not generic advice`);
-  } else if (agent.name === "manager") {
-    parts.push(`Respond with a JSON object matching this exact schema:
-
-\`\`\`json
-{
-  "agent": "manager",
-  "action_plan": [
-    {
-      "priority": 1,
-      "work_unit": "Short title for this work unit",
-      "effort": "trivial | small | medium | large",
-      "impact": "critical | high | medium | low",
-      "findings_addressed": ["agent:file:line references"],
-      "steps": ["Concrete step 1", "Concrete step 2"],
-      "rationale": "Why this priority and grouping"
-    }
-  ],
-  "deferred": [
-    {
-      "finding": "agent:file:line reference",
-      "reason": "Why this can wait",
-      "revisit": "When to revisit this"
-    }
-  ],
-  "summary": "X work units, estimated total effort, recommended approach"
-}
-\`\`\`
-
-Rules:
-- Return ONLY the JSON object, no surrounding text
-- Group related findings into logical work units
-- Priority 1 is highest (do first)
-- Effort ratings: trivial (<15min), small (<1hr), medium (<4hr), large (>4hr)
-- Be specific in steps — actionable, not vague
-- Defer low-impact findings that would slow down critical fixes`);
+  if (agent.output_format) {
+    parts.push("\n## Required Output Format\n");
+    parts.push(agent.output_format);
   }
 
   return parts.join("\n");

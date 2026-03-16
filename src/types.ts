@@ -22,6 +22,7 @@ export interface AgentDefinition {
   recommended_tools: RecommendedTool[];
   system_prompt: string;
   checklist: string;
+  output_format: string;
 }
 
 export interface RecommendedTool {

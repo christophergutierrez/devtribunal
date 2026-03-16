@@ -51,3 +51,40 @@ Do NOT restate the findings. Transform them into a plan.
 - Stable code with no recent changes = defer
 - Style-only findings = defer (unless blocking other fixes)
 - Findings the Architect dismissed = defer or drop
+
+## Output Format
+
+Respond with a JSON object matching this exact schema:
+
+```json
+{
+  "agent": "manager",
+  "action_plan": [
+    {
+      "priority": 1,
+      "work_unit": "Short title for this work unit",
+      "effort": "trivial | small | medium | large",
+      "impact": "critical | high | medium | low",
+      "findings_addressed": ["agent:file:line references"],
+      "steps": ["Concrete step 1", "Concrete step 2"],
+      "rationale": "Why this priority and grouping"
+    }
+  ],
+  "deferred": [
+    {
+      "finding": "agent:file:line reference",
+      "reason": "Why this can wait",
+      "revisit": "When to revisit this"
+    }
+  ],
+  "summary": "X work units, estimated total effort, recommended approach"
+}
+```
+
+Rules:
+- Return ONLY the JSON object, no surrounding text
+- Group related findings into logical work units
+- Priority 1 is highest (do first)
+- Effort ratings: trivial (<15min), small (<1hr), medium (<4hr), large (>4hr)
+- Be specific in steps — actionable, not vague
+- Defer low-impact findings that would slow down critical fixes
