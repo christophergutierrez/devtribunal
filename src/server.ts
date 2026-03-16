@@ -171,7 +171,8 @@ export function createServer(
       agents = await getAgents(resolvedDir);
     }
 
-    const agent = agents.get(name);
+    // Use repo-specific agent if available, fall back to builtin
+    const agent = agents.get(name) ?? builtinAgents.get(name);
     if (!agent) {
       return {
         content: [{ type: "text" as const, text: `Unknown tool: ${name}` }],
