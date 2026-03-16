@@ -7,7 +7,7 @@ export const CheckToolsInputSchema = z.object({
   repo_path: z
     .string()
     .optional()
-    .describe("Absolute path to the repo (uses devtribunal_agents/ if present)"),
+    .describe("Absolute path to the repo (uses .devtribunal_agents/ if present)"),
 });
 
 export type CheckToolsInput = z.infer<typeof CheckToolsInputSchema>;
@@ -18,7 +18,7 @@ export const checkToolsInputJsonSchema = {
     repo_path: {
       type: "string" as const,
       description:
-        "Absolute path to the repo (uses devtribunal_agents/ if present)",
+        "Absolute path to the repo (uses .devtribunal_agents/ if present)",
     },
   },
   required: [] as string[],

@@ -50,7 +50,7 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
 };
 
 const GITIGNORE_ENTRIES = [
-  "devtribunal_agents/",
+  ".devtribunal_agents/",
   ".claude/commands/dt/",
 ];
 
@@ -183,7 +183,7 @@ export async function executeInit(
   input: InitInput,
   builtinAgentsDir: string
 ): Promise<{ content: string; isError: boolean }> {
-  const targetDir = join(input.repo_path, "devtribunal_agents");
+  const targetDir = join(input.repo_path, ".devtribunal_agents");
 
   // Detect or use provided languages
   const languages = input.languages
@@ -212,14 +212,16 @@ export async function executeInit(
     };
   }
 
-  // Match agents to detected languages
+  // Match agents: language-specific agents that match detected languages,
+  // plus all language-agnostic agents (orchestrators, check_docs)
   const relevantAgents: Array<{ filename: string; raw: string }> = [];
   for (const filename of builtinFiles) {
     const raw = await readFile(join(builtinAgentsDir, filename), "utf-8");
     const { data } = matter(raw);
     const agentLangs: string[] = data.languages ?? [];
-    const hasOverlap = agentLangs.some((l: string) => languages.has(l));
-    if (hasOverlap) {
+    const isLanguageAgnostic = agentLangs.length === 0;
+    const matchesLanguage = agentLangs.some((l: string) => languages.has(l));
+    if (isLanguageAgnostic || matchesLanguage) {
       relevantAgents.push({ filename, raw });
     }
   }

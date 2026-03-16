@@ -5,5 +5,5 @@ dist/
 bun.lock
 bun.lockb
 *.tsbuildinfo
-devtribunal_agents/
+.devtribunal_agents/
 .claude/commands/dt/

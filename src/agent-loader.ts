@@ -97,7 +97,7 @@ export async function loadAgent(agentPath: string): Promise<AgentDefinition> {
 }
 
 /**
- * Walk up from a file path looking for devtribunal_agents/ directory.
+ * Walk up from a file path looking for .devtribunal_agents/ directory.
  * Returns the path if found, otherwise returns the built-in agents dir.
  */
 export async function resolveAgentsDir(
@@ -109,7 +109,7 @@ export async function resolveAgentsDir(
   const root = "/";
 
   while (dir !== root) {
-    const candidate = join(dir, "devtribunal_agents");
+    const candidate = join(dir, ".devtribunal_agents");
     try {
       const s = await stat(candidate);
       if (s.isDirectory()) return candidate;

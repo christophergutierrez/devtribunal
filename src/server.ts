@@ -161,7 +161,7 @@ export function createServer(
       };
     }
 
-    // Try loading agent from target repo's devtribunal_agents/ first
+    // Try loading agent from target repo's .devtribunal_agents/ first
     const resolvedDir = await resolveAgentsDir(
       parsed.data.file_path,
       builtinAgentsDir

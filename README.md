@@ -62,7 +62,7 @@ dt_init({ repo_path: "/path/to/your/repo" })
 ```
 
 This creates:
-- `devtribunal_agents/` — agent definition files for detected languages
+- `.devtribunal_agents/` — agent definition files for detected languages
 - `.claude/commands/dt/` — skill commands (full, incremental-staged, incremental-pr-ready, incremental-wip)
 
 Both paths are added to `.gitignore` by default — no trace in your repo. To version-control your agents and skills, remove the devtribunal lines from `.gitignore`.
@@ -117,7 +117,7 @@ After `dt_init`, these Claude Code slash commands are available:
 
 ### Edit agent definitions
 
-Agent files in `devtribunal_agents/` are markdown with YAML frontmatter. Edit them to:
+Agent files in `.devtribunal_agents/` are markdown with YAML frontmatter. Edit them to:
 
 - Adjust the review checklist for your team's standards
 - Add or remove recommended linters
@@ -126,7 +126,7 @@ Agent files in `devtribunal_agents/` are markdown with YAML frontmatter. Edit th
 
 ### Create custom agents
 
-Drop a new `.md` file in `devtribunal_agents/` with this frontmatter:
+Drop a new `.md` file in `.devtribunal_agents/` with this frontmatter:
 
 ```yaml
 ---
