@@ -26,10 +26,12 @@ Perform a comprehensive devtribunal code review of this repository.
 
    Run reviews in parallel where possible. Pass absolute file paths. If $ARGUMENTS is provided, scope the review to those files or directories instead of the full repo.
 
-4. **Check documentation**: Call `check_docs` on README and other key documentation files.
+4. **Check file-level documentation**: Call `check_docs` on source files with significant doc comments, docstrings, or inline documentation.
 
-5. **Architect synthesis**: Collect all findings from steps 3 and 4 as a JSON string. Call `architect` with these combined findings to identify cross-cutting concerns and systemic patterns. If repomap context was gathered in step 2, include the repo outline as additional context.
+5. **Architect synthesis**: Collect all Markdown findings from steps 3 and 4 into a single string. Call the `architect` orchestrator tool with these combined findings to identify cross-cutting concerns and systemic patterns. If repomap context was gathered in step 2, include the repo outline as additional context.
 
-6. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized, effort-rated action plan.
+6. **Check project-level documentation**: Read the contents of README, CHANGELOG, architecture docs, and other project-level documentation files. Call the `check_project_docs` orchestrator tool with the architect output as `findings` and the documentation contents as `context`. This checks whether project docs are consistent with what the review revealed.
 
-7. **Present results**: Show the final action plan to the user, organized by priority and work unit.
+7. **Manager action plan**: Call the `manager` orchestrator tool with the architect output, the project docs audit from step 6, and the original specialist findings to produce a prioritized, effort-rated action plan.
+
+8. **Present results**: Show the final action plan to the user, organized by priority and work unit.

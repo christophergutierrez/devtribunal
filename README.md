@@ -11,25 +11,97 @@ AI assistants call devtribunal's review tools via MCP and get back structured, s
 | Agent | Languages | Linters |
 |-------|-----------|---------|
 | `review_typescript` | TypeScript, JavaScript | eslint, tsc, biome |
-| `review_python` | Python | ruff, mypy, pyright |
+| `review_python` | Python | mypy, ruff, pylint |
 | `review_rust` | Rust | clippy, cargo-audit |
 | `review_go` | Go | golangci-lint, go vet, staticcheck |
 | `review_java` | Java | checkstyle, spotbugs, pmd |
 | `review_php` | PHP | phpstan, psalm |
-| `review_csharp` | C# | dotnet-format, roslynator |
+| `review_csharp` | C# | dotnet-build, roslyn-analyzers, roslynator |
 | `review_c` | C | clang-tidy, cppcheck |
 | `review_dart` | Dart | dart analyze |
 | `review_lua` | Lua | luacheck, selene |
 | `review_sql` | SQL | sqlfluff |
-| `review_protobuf` | Protocol Buffers | buf lint |
+| `review_protobuf` | Protocol Buffers | buf lint, buf breaking |
 
-**2 orchestrator agents:**
+**3 orchestrator agents:**
 - `architect` — synthesizes specialist findings into cross-cutting concerns
+- `check_project_docs` — audits project docs (README, CHANGELOG) against architect findings for drift
 - `manager` — produces prioritized, effort-rated action plans
+
+**1 documentation auditor:**
+- `check_docs` — reviews README, docstrings, and inline comments for accuracy and staleness
 
 **2 management tools:**
 - `dt_init` — scaffolds agent definitions and skill commands into a target repo
 - `check_tools` — checks which recommended linters are installed
+
+## Pipeline
+
+The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in sequence:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  1. DETECT                                              │
+│  Scan repo, identify languages                          │
+└────────────────────────┬────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  2. REVIEW  (parallel)                                  │
+│                                                         │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
+│  │ review_ts    │ │ review_py    │ │ review_rust  │    │
+│  │   + eslint   │ │   + ruff     │ │   + clippy   │    │
+│  │   + biome    │ │   + mypy     │ │              │    │
+│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘    │
+│         │                │                │    ...      │
+│         ▼                ▼                ▼             │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │           Structured Markdown findings          │    │
+│  │  [High-Level Summary]                           │    │
+│  │  [Critical Issues] — Issue, Location, Why, Fix  │    │
+│  │  [Improvements]    — same format                │    │
+│  └─────────────────────────┬───────────────────────┘    │
+│                             │                           │
+│  ┌──────────────┐           │                           │
+│  │ check_docs   ├───────────┤  (file-level docs)       │
+│  └──────────────┘           │                           │
+└─────────────────────────────┼───────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────┐
+│  3. ARCHITECT                                           │
+│  Synthesize specialist findings into:                   │
+│  • Cross-cutting concerns (risk vs debt, confidence)    │
+│  • Specialist overrides (escalate / downgrade / dismiss)│
+└────────────────────────┬────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  4. CHECK PROJECT DOCS                                  │
+│  Audit project-level docs against architect findings:   │
+│  • README claims contradicted by findings               │
+│  • Architecture docs that don't match actual structure  │
+│  • Missing docs for architectural decisions/risks       │
+└────────────────────────┬────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  5. MANAGER                                             │
+│  Transform all findings into:                           │
+│  • Prioritized work units with effort estimates         │
+│  • Concrete steps referencing specialist fixes          │
+│  • Deferred items with revisit triggers                 │
+└────────────────────────┬────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  6. PRESENT                                             │
+│  Action plan shown to user, organized by priority       │
+└─────────────────────────────────────────────────────────┘
+```
+
+Each stage is an independent MCP tool call. The server is stateless — it builds prompts from agent definitions and passes them back to the host LLM, which generates the review content.
 
 ## Install
 
@@ -75,34 +147,34 @@ Call any specialist tool with a file path:
 review_typescript({ file_path: "/path/to/file.ts" })
 ```
 
-The tool returns a structured prompt that the host LLM uses to produce JSON findings:
+The tool returns a structured prompt that the host LLM uses to produce a Markdown review:
 
-```json
-{
-  "agent": "review_typescript",
-  "file": "/path/to/file.ts",
-  "findings": [
-    {
-      "severity": "high",
-      "confidence": "confirmed",
-      "location": "/path/to/file.ts:42",
-      "observation": "exec() used with string interpolation",
-      "why_it_matters": "Command injection vector",
-      "recommended_fix": "Use execFile with argument array"
-    }
-  ],
-  "summary": "0 critical, 1 high, 0 medium findings"
-}
+```markdown
+**[High-Level Summary]**
+The file has one high-severity security issue in the command execution path.
+
+**[Critical Issues]**
+* **Issue:** `exec()` used with string interpolation — command injection vector
+* **Location:** `/path/to/file.ts:42`
+* **Why it matters:** User-controlled input reaches a shell command without sanitization
+* **Suggested Fix:**
+  ```typescript
+  execFile("git", ["log", "--oneline", sanitizedRef], callback);
+  ```
+
+**[Improvements & Idiomatic TypeScript]**
+None
 ```
 
 If linters are installed (eslint, ruff, clippy, etc.), their output is included in the prompt so the LLM can reference concrete tool findings.
 
 ### Synthesize findings
 
-After reviewing multiple files, pass all findings to the orchestrators:
+After reviewing multiple files, pass all findings through the orchestrator chain:
 
 1. `architect` — identifies cross-cutting concerns, overrides misgraded findings
-2. `manager` — groups findings into prioritized work units with effort estimates
+2. `check_project_docs` — audits README/CHANGELOG/architecture docs against architect findings
+3. `manager` — groups all findings into prioritized work units with effort estimates
 
 ### Skill commands
 
@@ -150,7 +222,7 @@ Set `source: custom` to prevent `dt_init` from overwriting your file on re-run.
 
 ### Create custom orchestrators
 
-Orchestrators use the same format with `role: orchestrator` and a `## Output Format` section defining their JSON output schema. No code changes needed.
+Orchestrators use the same format with `role: orchestrator` and a `## Output Format` section defining their structured Markdown output. No code changes needed.
 
 ## Architecture
 
@@ -174,7 +246,7 @@ templates/skills/       # Claude Code skill templates
 ```
 
 Key design decisions:
-- **Agents are tools, not personas** — structured JSON output, not chat
+- **Agents are tools, not personas** — structured Markdown output, not chat
 - **Config-driven** — agent definitions are markdown, not hardcoded
 - **Host-delegated LLM** — tools return prompts, the host does the review
 - **Best-effort linters** — linter failures are silently caught, review continues

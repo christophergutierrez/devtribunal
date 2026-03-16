@@ -60,11 +60,10 @@ If there are no improvements, write `None`.
 - TODO/FIXME/HACK comments that reference completed or abandoned work
 - Docstrings with wrong parameter names, types, or return descriptions
 - Syntax errors in documentation formats (e.g., broken Javadoc, TSDoc, or Rustdoc tags)
-- Comments that repeat what the code obviously does (noise, not signal)
 - Commented-out code blocks with no explanation of why they exist
 
 ### API Documentation
-- Public functions/methods/types missing doc comments
+- Missing doc comments on exported/public-facing APIs that external consumers or contributors depend on (do not flag internal or private functions — follow the repo's conventions)
 - Parameter descriptions that don't match actual parameter behavior
 - Return type documentation that doesn't match actual returns
 - Missing error/exception documentation for functions that can fail
