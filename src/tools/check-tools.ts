@@ -1,7 +1,7 @@
-import { exec } from "node:child_process";
 import { z } from "zod";
-import type { AgentDefinition, RecommendedTool } from "../types.js";
+import type { AgentDefinition } from "../types.js";
 import { expandRunnerAlternatives } from "../runner-alternatives.js";
+import { splitCommand, safeExecFile } from "../utils/shell.js";
 
 export const CheckToolsInputSchema = z.object({
   repo_path: z
@@ -21,18 +21,6 @@ interface ToolCheckResult {
   runner?: string;
 }
 
-function execCommand(cmd: string, timeoutMs = 5000): Promise<string | null> {
-  return new Promise((resolve) => {
-    exec(cmd, { timeout: timeoutMs }, (err, stdout) => {
-      if (err) {
-        resolve(null);
-      } else {
-        resolve(stdout.trim());
-      }
-    });
-  });
-}
-
 /**
  * Try a check command and its package-runner alternatives.
  * Returns the version string and which runner succeeded, or null.
@@ -43,9 +31,10 @@ async function checkCommand(
 ): Promise<{ version: string; runner: string } | null> {
   const alternatives = expandRunnerAlternatives(cmd);
   for (const alt of alternatives) {
-    const version = await execCommand(alt.cmd, timeoutMs);
-    if (version !== null) {
-      return { version, runner: alt.runner };
+    const { bin, args } = splitCommand(alt.cmd);
+    const result = await safeExecFile(bin, args, { timeout: timeoutMs });
+    if (result.exitCode >= 0 && result.stdout.trim()) {
+      return { version: result.stdout.trim(), runner: alt.runner };
     }
   }
   return null;

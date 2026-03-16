@@ -1,6 +1,6 @@
-import { exec } from "node:child_process";
 import type { RecommendedTool, LinterFinding } from "../types.js";
 import { expandRunnerAlternatives } from "../runner-alternatives.js";
+import { validateFilePath, splitCommand, safeExecFile } from "../utils/shell.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -8,46 +8,41 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * Check if a tool is installed, trying package-runner alternatives.
  * Returns the runner prefix that works (e.g. "bunx"), or null if not found.
  */
-function checkInstalled(
+async function checkInstalled(
   tool: RecommendedTool,
   timeoutMs = 5000
 ): Promise<string | null> {
-  if (!tool.check) return Promise.resolve(null);
+  if (!tool.check) return null;
 
   const alternatives = expandRunnerAlternatives(tool.check);
-
-  return (async () => {
-    for (const alt of alternatives) {
-      const ok = await new Promise<boolean>((resolve) => {
-        exec(alt.cmd, { timeout: timeoutMs }, (err) => resolve(!err));
-      });
-      if (ok) return alt.runner;
+  for (const alt of alternatives) {
+    const { bin, args } = splitCommand(alt.cmd);
+    const result = await safeExecFile(bin, args, { timeout: timeoutMs });
+    if (result.exitCode >= 0 && result.exitCode !== -1) {
+      // exitCode 0 = success, but some --version commands exit non-zero
+      // We consider anything that didn't error/timeout as "installed"
+      if (result.stderr !== "Process timed out" && !result.stderr.startsWith("Error: spawn")) {
+        return alt.runner;
+      }
     }
-    return null;
-  })();
+  }
+  return null;
 }
 
-function execLinter(
-  command: string,
-  timeoutMs: number
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    exec(command, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err && err.killed) {
-        // Process was killed (timeout)
-        resolve({ stdout: "", stderr: "Linter timed out", exitCode: -1 });
-        return;
-      }
-      if (err && !("code" in err)) {
-        // Exec error (command not found, etc.)
-        resolve({ stdout: "", stderr: String(err), exitCode: -1 });
-        return;
-      }
-      // Linters often exit non-zero when findings exist — that's normal
-      const exitCode = err?.code ?? 0;
-      resolve({ stdout: stdout ?? "", stderr: stderr ?? "", exitCode });
-    });
+/**
+ * Strip shell redirections like 2>&1 from command templates.
+ * Returns the clean args and whether stderr should be merged.
+ */
+function stripRedirections(args: string[]): { cleanArgs: string[]; mergeStderr: boolean } {
+  let mergeStderr = false;
+  const cleanArgs = args.filter((arg) => {
+    if (arg === "2>&1") {
+      mergeStderr = true;
+      return false;
+    }
+    return true;
   });
+  return { cleanArgs, mergeStderr };
 }
 
 function tryParseJsonFindings(
@@ -88,11 +83,26 @@ function tryParseJsonFindings(
       column: toNumber(obj.column ?? obj.col ?? obj.startColumn ?? obj.begin_column),
       severity: String(obj.severity ?? obj.type ?? obj.level ?? "warning").toLowerCase(),
       message: String(obj.message ?? obj.msg ?? obj.description ?? ""),
-      rule: obj.rule ? String(typeof obj.rule === "object" ? (obj.rule as Record<string, unknown>).id ?? obj.rule : obj.rule) : (obj.ruleId ? String(obj.ruleId) : (obj.code ? String(obj.code) : null)),
+      rule: extractRuleId(obj),
     });
   }
 
   return findings;
+}
+
+/**
+ * Extract a rule ID from various linter JSON output shapes.
+ */
+function extractRuleId(obj: Record<string, unknown>): string | null {
+  if (obj.rule) {
+    if (typeof obj.rule === "object" && obj.rule !== null) {
+      return String((obj.rule as Record<string, unknown>).id ?? obj.rule);
+    }
+    return String(obj.rule);
+  }
+  if (obj.ruleId) return String(obj.ruleId);
+  if (obj.code) return String(obj.code);
+  return null;
 }
 
 /**
@@ -191,6 +201,9 @@ export async function runLinters(
   tools: RecommendedTool[],
   timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<LinterRunResult> {
+  // Validate file path before any execution
+  validateFilePath(filePath);
+
   const findings: LinterFinding[] = [];
   const skipped: string[] = [];
   const errors: string[] = [];
@@ -206,26 +219,39 @@ export async function runLinters(
       continue;
     }
 
-    // Substitute {file} placeholder — quote the path for shell safety
-    let command = tool.run.replace(/\{file\}/g, `"${filePath}"`);
-
-    // If a different runner was detected, swap it in the run command too
+    // Build command template, swapping runner if needed
+    let cmdTemplate = tool.run;
     if (runner !== "system") {
-      const alts = expandRunnerAlternatives(command);
+      const alts = expandRunnerAlternatives(cmdTemplate);
       const match = alts.find((a) => a.runner === runner);
-      if (match) command = match.cmd;
+      if (match) cmdTemplate = match.cmd;
     }
 
-    // Execute
-    const result = await execLinter(command, timeoutMs);
+    // Split into bin + args, replace {file} in args array (not shell-interpolated)
+    const { bin, args: rawArgs } = splitCommand(
+      cmdTemplate.replace(/\{file\}/g, filePath)
+    );
+
+    // Strip shell redirections — handle them via stream merging instead
+    const { cleanArgs, mergeStderr } = stripRedirections(rawArgs);
+
+    // Execute via execFile (no shell)
+    const result = await safeExecFile(bin, cleanArgs, {
+      timeout: timeoutMs,
+    });
 
     if (result.exitCode === -1) {
       errors.push(`${tool.name}: ${result.stderr}`);
       continue;
     }
 
+    // If the command template had 2>&1, merge stderr into stdout for parsing
+    const stdout = mergeStderr
+      ? result.stdout + "\n" + result.stderr
+      : result.stdout;
+
     // Parse output
-    const toolFindings = parseLinterOutput(tool, result.stdout, result.stderr);
+    const toolFindings = parseLinterOutput(tool, stdout, result.stderr);
     findings.push(...toolFindings);
   }
 
