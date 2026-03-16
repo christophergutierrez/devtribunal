@@ -2,6 +2,84 @@
 
 MCP server where each tool is a specialist code review agent. 13 languages, structured findings, actionable plans.
 
+## Install
+
+### Homebrew
+
+```sh
+brew install christophergutierrez/devtribunal/devtribunal
+```
+
+### Quick install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/christophergutierrez/devtribunal/main/install.sh | sh
+```
+
+### Cargo
+
+```sh
+cargo install --git https://github.com/christophergutierrez/devtribunal
+```
+
+### Build from source
+
+```sh
+cargo build --release
+cargo install --path .
+```
+
+## Setup
+
+### 1. Configure Claude Code
+
+```sh
+claude mcp add --transport stdio devtribunal "$(which devtribunal)"
+```
+
+Start a new Claude Code session after adding. The MCP tools appear automatically.
+
+### 2. Initialize a repo
+
+In Claude Code, call `dt_init` with a target repo path:
+
+```
+dt_init({ repo_path: "/path/to/your/repo" })
+```
+
+This auto-detects languages and scaffolds:
+- `.devtribunal_agents/` — agent definition files for detected languages
+- `.claude/commands/dt/` — skill commands for Claude Code
+
+Both paths are added to `.gitignore` by default — no trace in your repo.
+
+### 3. Run a review
+
+Use the scaffolded skill commands:
+
+- `/dt:full` — comprehensive review of the entire repo
+- `/dt:incremental-staged` — review staged changes (ready to commit)
+- `/dt:incremental-pr-ready` — review unpushed commits (ready to push)
+- `/dt:incremental-wip` — review all work-in-progress changes
+
+Or call tools directly:
+
+```
+review_typescript({ file_path: "/path/to/file.ts" })
+```
+
+### CLI commands
+
+```sh
+devtribunal --version         # Version check
+devtribunal list-agents       # Show all embedded agents
+devtribunal check-tools       # Check which linters are installed
+```
+
+No subcommand starts the MCP server (used by Claude Code automatically).
+
+---
+
 ## What it does
 
 AI assistants call devtribunal's review tools via MCP and get back structured, severity-rated findings — not freeform opinions. Multiple specialists can be composed and synthesized by three orchestrator agents (Architect, Project Docs Auditor, and Manager) into prioritized action plans.
@@ -103,88 +181,6 @@ The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in seq
 
 Each stage is an independent MCP tool call. The server is stateless — it builds prompts from agent definitions and passes them back to the host LLM, which generates the review content.
 
-## Install
-
-```bash
-claude mcp add devtribunal -- npx tsx /path/to/devtribunal/src/index.ts
-```
-
-Or with bun:
-
-```bash
-claude mcp add devtribunal -- bun run /path/to/devtribunal/src/index.ts
-```
-
-### Dependencies
-
-```bash
-cd /path/to/devtribunal
-bun install   # or npm install
-bun run build # or npx tsc
-```
-
-## Usage
-
-### Initialize in a repo
-
-Call `dt_init` with a target repo path. It auto-detects languages and scaffolds the matching agent definitions and Claude Code skill commands:
-
-```
-dt_init({ repo_path: "/path/to/your/repo" })
-```
-
-This creates:
-- `.devtribunal_agents/` — agent definition files for detected languages
-- `.claude/commands/dt/` — skill commands (full, incremental-staged, incremental-pr-ready, incremental-wip)
-
-Both paths are added to `.gitignore` by default — no trace in your repo. To version-control your agents and skills, remove the devtribunal lines from `.gitignore`.
-
-### Review a file
-
-Call any specialist tool with a file path:
-
-```
-review_typescript({ file_path: "/path/to/file.ts" })
-```
-
-The tool returns a structured prompt that the host LLM uses to produce a Markdown review:
-
-```markdown
-**[High-Level Summary]**
-The file has one high-severity security issue in the command execution path.
-
-**[Critical Issues]**
-* **Issue:** `exec()` used with string interpolation — command injection vector
-* **Location:** `/path/to/file.ts:42`
-* **Why it matters:** User-controlled input reaches a shell command without sanitization
-* **Suggested Fix:**
-  ```typescript
-  execFile("git", ["log", "--oneline", sanitizedRef], callback);
-  ```
-
-**[Improvements & Idiomatic TypeScript]**
-None
-```
-
-If linters are installed (eslint, ruff, clippy, etc.), their output is included in the prompt so the LLM can reference concrete tool findings.
-
-### Synthesize findings
-
-After reviewing multiple files, pass all findings through the orchestrator chain:
-
-1. `architect` — identifies cross-cutting concerns, overrides misgraded findings
-2. `check_project_docs` — audits README/CHANGELOG/architecture docs against architect findings
-3. `manager` — groups all findings into prioritized work units with effort estimates
-
-### Skill commands
-
-After `dt_init`, these Claude Code slash commands are available:
-
-- `/dt:full` — comprehensive review of the entire repo
-- `/dt:incremental-staged` — review staged changes (ready to commit)
-- `/dt:incremental-pr-ready` — review unpushed commits (ready to push)
-- `/dt:incremental-wip` — review all work-in-progress changes
-
 ## Customization
 
 ### Edit agent definitions
@@ -222,32 +218,33 @@ Set `source: custom` to prevent `dt_init` from overwriting your file on re-run.
 
 ### Create custom orchestrators
 
-Orchestrators use the same format with `role: orchestrator` and a `## Output Format` section defining their structured Markdown output. No code changes needed.
+Orchestrators use the same format with `role: orchestrator` and a `## Output Format` section defining their structured Markdown output.
 
 ## Architecture
 
 ```
-src/
-  index.ts              # Entry point, stdio transport
-  server.ts             # MCP server, tool routing, agent cache
-  agent-loader.ts       # Parse agent markdown, Zod validation, resolve dirs
-  types.ts              # TypeScript interfaces
-  runner-alternatives.ts # Cross-ecosystem tool detection (bunx/pnpx/npx)
-  utils/shell.ts        # Safe execFile wrapper, path validation
+rust/src/
+  main.rs           # CLI (clap) + entry point
+  mcp.rs            # JSON-RPC 2.0 stdio server
+  types.rs          # Structs, agent parsing, embedded assets
+  runner.rs         # Package runner alternatives (bunx/pnpx/npx)
+  shell.rs          # Safe process execution, path validation
   tools/
-    review.ts           # Specialist review prompt builder
-    orchestrate.ts      # Orchestrator prompt builder
-    linter.ts           # Linter runner (parallel execution, output parsing)
-    init.ts             # dt_init scaffolding + gitignore management
-    check-tools.ts      # Tool availability checker
+    review.rs       # Specialist review prompt builder
+    orchestrate.rs  # Orchestrator prompt builder
+    linter.rs       # Linter execution (parallel, multi-format JSON parsing)
+    init.rs         # dt_init scaffolding + gitignore management
+    check_tools.rs  # Tool availability checker
 
-agents/                 # Built-in agent definitions (18 files)
-templates/skills/       # Claude Code skill templates
+agents/             # 18 agent definitions (embedded at compile time)
+templates/skills/   # 4 skill templates (embedded at compile time)
 ```
 
 Key design decisions:
+- **Single binary** — all agents and templates embedded via `include_str!` at compile time
 - **Agents are tools, not personas** — structured Markdown output, not chat
-- **Config-driven** — agent definitions are markdown, not hardcoded
+- **Config-driven** — agent definitions are markdown with YAML frontmatter
 - **Host-delegated LLM** — tools return prompts, the host does the review
 - **Best-effort linters** — linter failures are silently caught, review continues
 - **Zero trace** — `dt_init` gitignores scaffolded files by default
+- **Repo overrides** — `.devtribunal_agents/` in a repo overrides built-in agents
