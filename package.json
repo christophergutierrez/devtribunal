@@ -1,6 +1,6 @@
 {
   "name": "devtribunal",
-  "version": "0.0.1",
+  "version": "0.3.0",
   "description": "MCP server where each tool is a specialist code review agent",
   "type": "module",
   "main": "dist/index.js",
