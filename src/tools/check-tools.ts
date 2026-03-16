@@ -12,6 +12,18 @@ export const CheckToolsInputSchema = z.object({
 
 export type CheckToolsInput = z.infer<typeof CheckToolsInputSchema>;
 
+export const checkToolsInputJsonSchema = {
+  type: "object" as const,
+  properties: {
+    repo_path: {
+      type: "string" as const,
+      description:
+        "Absolute path to the repo (uses devtribunal_agents/ if present)",
+    },
+  },
+  required: [] as string[],
+};
+
 interface ToolCheckResult {
   agent: string;
   tool: string;

@@ -15,6 +15,22 @@ export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
 
 export { OrchestrateInputSchema };
 
+export const orchestrateInputJsonSchema = {
+  type: "object" as const,
+  properties: {
+    findings: {
+      type: "string" as const,
+      description: "JSON string of review findings from specialist agents",
+    },
+    context: {
+      type: "string" as const,
+      description:
+        "Additional context about the review scope or priorities",
+    },
+  },
+  required: ["findings"],
+};
+
 export function buildOrchestratePrompt(
   agent: AgentDefinition,
   findings: string,

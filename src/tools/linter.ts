@@ -204,22 +204,26 @@ export async function runLinters(
   // Validate file path before any execution
   validateFilePath(filePath);
 
-  const findings: LinterFinding[] = [];
   const skipped: string[] = [];
-  const errors: string[] = [];
 
   // Filter to tools with run commands
   const runnableTools = tools.filter((t) => t.run);
 
+  // First pass: check installation, build execution list
+  const toRun: Array<{
+    tool: RecommendedTool;
+    bin: string;
+    args: string[];
+    mergeStderr: boolean;
+  }> = [];
+
   for (const tool of runnableTools) {
-    // Check if installed — returns the working runner prefix, or null
     const runner = await checkInstalled(tool);
     if (runner === null) {
       skipped.push(tool.name);
       continue;
     }
 
-    // Build command template, swapping runner if needed
     let cmdTemplate = tool.run;
     if (runner !== "system") {
       const alts = expandRunnerAlternatives(cmdTemplate);
@@ -227,32 +231,48 @@ export async function runLinters(
       if (match) cmdTemplate = match.cmd;
     }
 
-    // Split into bin + args, replace {file} in args array (not shell-interpolated)
     const { bin, args: rawArgs } = splitCommand(
       cmdTemplate.replace(/\{file\}/g, filePath)
     );
-
-    // Strip shell redirections — handle them via stream merging instead
     const { cleanArgs, mergeStderr } = stripRedirections(rawArgs);
+    toRun.push({ tool, bin, args: cleanArgs, mergeStderr });
+  }
 
-    // Execute via execFile (no shell)
-    const result = await safeExecFile(bin, cleanArgs, {
-      timeout: timeoutMs,
-    });
+  // Second pass: execute all linters in parallel
+  const results = await Promise.allSettled(
+    toRun.map(async ({ tool, bin, args, mergeStderr }) => {
+      const result = await safeExecFile(bin, args, { timeout: timeoutMs });
 
-    if (result.exitCode === -1) {
-      errors.push(`${tool.name}: ${result.stderr}`);
+      if (result.exitCode === -1) {
+        return { tool, error: result.stderr, findings: [] as LinterFinding[] };
+      }
+
+      const stdout = mergeStderr
+        ? result.stdout + "\n" + result.stderr
+        : result.stdout;
+
+      return {
+        tool,
+        error: null,
+        findings: parseLinterOutput(tool, stdout, result.stderr),
+      };
+    })
+  );
+
+  // Aggregate results
+  const findings: LinterFinding[] = [];
+  const errors: string[] = [];
+
+  for (const r of results) {
+    if (r.status === "rejected") {
+      errors.push(String(r.reason));
       continue;
     }
-
-    // If the command template had 2>&1, merge stderr into stdout for parsing
-    const stdout = mergeStderr
-      ? result.stdout + "\n" + result.stderr
-      : result.stdout;
-
-    // Parse output
-    const toolFindings = parseLinterOutput(tool, stdout, result.stderr);
-    findings.push(...toolFindings);
+    if (r.value.error) {
+      errors.push(`${r.value.tool.name}: ${r.value.error}`);
+    } else {
+      findings.push(...r.value.findings);
+    }
   }
 
   return { findings, skipped, errors };

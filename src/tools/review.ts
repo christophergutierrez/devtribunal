@@ -15,6 +15,21 @@ export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 
 export { ReviewInputSchema };
 
+export const reviewInputJsonSchema = {
+  type: "object" as const,
+  properties: {
+    file_path: {
+      type: "string" as const,
+      description: "Absolute path to the file to review",
+    },
+    context: {
+      type: "string" as const,
+      description: "Additional context about the file or review focus",
+    },
+  },
+  required: ["file_path"],
+};
+
 function formatLinterFindings(result: LinterRunResult): string {
   const { findings, skipped, errors } = result;
 
@@ -106,8 +121,8 @@ export function buildReviewPrompt(
 
 \`\`\`json
 {
-  "agent": "${agent.name}",
-  "file": "${filePath}",
+  "agent": ${JSON.stringify(agent.name)},
+  "file": ${JSON.stringify(filePath)},
   "findings": [
     {
       "severity": "critical | high | medium | low | info",

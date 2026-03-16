@@ -13,6 +13,23 @@ export const InitInputSchema = z.object({
 
 export type InitInput = z.infer<typeof InitInputSchema>;
 
+export const initInputJsonSchema = {
+  type: "object" as const,
+  properties: {
+    repo_path: {
+      type: "string" as const,
+      description: "Absolute path to the target repository",
+    },
+    languages: {
+      type: "array" as const,
+      items: { type: "string" as const },
+      description:
+        "Languages to initialize agents for (auto-detected if omitted)",
+    },
+  },
+  required: ["repo_path"],
+};
+
 const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ".ts": "typescript",
   ".tsx": "typescript",

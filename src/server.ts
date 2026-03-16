@@ -4,71 +4,11 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentDefinition } from "./types.js";
-import { ReviewInputSchema, executeReview } from "./tools/review.js";
-import { OrchestrateInputSchema, executeOrchestrate } from "./tools/orchestrate.js";
-import { InitInputSchema, executeInit } from "./tools/init.js";
-import { CheckToolsInputSchema, executeCheckTools } from "./tools/check-tools.js";
+import { ReviewInputSchema, reviewInputJsonSchema, executeReview } from "./tools/review.js";
+import { OrchestrateInputSchema, orchestrateInputJsonSchema, executeOrchestrate } from "./tools/orchestrate.js";
+import { InitInputSchema, initInputJsonSchema, executeInit } from "./tools/init.js";
+import { CheckToolsInputSchema, checkToolsInputJsonSchema, executeCheckTools } from "./tools/check-tools.js";
 import { loadAllAgents, resolveAgentsDir } from "./agent-loader.js";
-
-const reviewInputJsonSchema = {
-  type: "object" as const,
-  properties: {
-    file_path: {
-      type: "string" as const,
-      description: "Absolute path to the file to review",
-    },
-    context: {
-      type: "string" as const,
-      description: "Additional context about the file or review focus",
-    },
-  },
-  required: ["file_path"],
-};
-
-const initInputJsonSchema = {
-  type: "object" as const,
-  properties: {
-    repo_path: {
-      type: "string" as const,
-      description: "Absolute path to the target repository",
-    },
-    languages: {
-      type: "array" as const,
-      items: { type: "string" as const },
-      description:
-        "Languages to initialize agents for (auto-detected if omitted)",
-    },
-  },
-  required: ["repo_path"],
-};
-
-const orchestrateInputJsonSchema = {
-  type: "object" as const,
-  properties: {
-    findings: {
-      type: "string" as const,
-      description: "JSON string of review findings from specialist agents",
-    },
-    context: {
-      type: "string" as const,
-      description:
-        "Additional context about the review scope or priorities",
-    },
-  },
-  required: ["findings"],
-};
-
-const checkToolsInputJsonSchema = {
-  type: "object" as const,
-  properties: {
-    repo_path: {
-      type: "string" as const,
-      description:
-        "Absolute path to the repo (uses devtribunal_agents/ if present)",
-    },
-  },
-  required: [],
-};
 
 export function createServer(
   builtinAgents: Map<string, AgentDefinition>,
