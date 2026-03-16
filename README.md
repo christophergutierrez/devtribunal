@@ -34,7 +34,7 @@ cargo install --path .
 ### 1. Configure Claude Code
 
 ```sh
-claude mcp add --transport stdio devtribunal "$(which devtribunal)"
+claude mcp add -s user --transport stdio devtribunal "$(which devtribunal)"
 ```
 
 Start a new Claude Code session after adding. The MCP tools appear automatically.
@@ -52,6 +52,8 @@ This auto-detects languages and scaffolds:
 - `.claude/commands/dt/` — skill commands for Claude Code
 
 Both paths are added to `.gitignore` by default — no trace in your repo.
+
+**Restart your Claude Code session after running `dt_init`** — Claude Code only discovers new skill commands at startup.
 
 ### 3. Run a review
 
