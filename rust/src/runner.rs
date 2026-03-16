@@ -1,5 +1,4 @@
 /// Package runner alternatives for cross-ecosystem tool detection.
-
 pub struct RunnerAlternative {
     pub cmd: String,
     pub runner: String,

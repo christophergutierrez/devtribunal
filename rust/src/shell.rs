@@ -16,7 +16,7 @@ pub fn validate_file_path(file_path: &str) -> Result<(), String> {
 /// Split a command string into binary and arguments.
 /// Only safe for known command templates from agent definitions, NOT for arbitrary user input.
 pub fn split_command(cmd: &str) -> (String, Vec<String>) {
-    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
         return (String::new(), Vec::new());
     }

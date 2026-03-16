@@ -1,9 +1,10 @@
-node_modules/
-dist/
+# Rust
+target/
+
+# Environment
 .env
+
+# Project tooling
 .paul/
-bun.lock
-bun.lockb
-*.tsbuildinfo
 .devtribunal_agents/
 .claude/commands/dt/

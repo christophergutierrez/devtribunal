@@ -23,6 +23,7 @@ pub struct RecommendedTool {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct AgentFrontmatter {
     pub name: Option<String>,
     #[serde(default)]
@@ -49,7 +50,6 @@ pub struct AgentDefinition {
     pub description: String,
     pub role: AgentRole,
     pub languages: Vec<String>,
-    pub severity_focus: Vec<String>,
     pub recommended_tools: Vec<RecommendedTool>,
     pub system_prompt: String,
     pub checklist: String,
@@ -62,9 +62,11 @@ pub struct LinterFinding {
     pub tool: String,
     pub file: String,
     pub line: Option<u32>,
+    #[allow(dead_code)]
     pub column: Option<u32>,
     pub severity: String,
     pub message: String,
+    #[allow(dead_code)]
     pub rule: Option<String>,
 }
 
@@ -109,7 +111,7 @@ pub fn parse_agent(file_name: &str, raw: &str) -> anyhow::Result<AgentDefinition
     let checklist = match checklist_idx {
         Some(ci) => {
             let start = ci + checklist_marker.len();
-            let end = if output_format_idx.map_or(false, |oi| oi > ci) {
+            let end = if output_format_idx.is_some_and(|oi| oi > ci) {
                 output_format_idx.unwrap()
             } else {
                 body.len()
@@ -130,7 +132,6 @@ pub fn parse_agent(file_name: &str, raw: &str) -> anyhow::Result<AgentDefinition
         description: frontmatter.description,
         role: frontmatter.role,
         languages: frontmatter.languages,
-        severity_focus: frontmatter.severity_focus,
         recommended_tools: frontmatter.recommended_tools,
         system_prompt,
         checklist,

@@ -10,7 +10,6 @@ use std::time::Duration;
 const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct ToolCheckResult {
-    agent: String,
     tool: String,
     purpose: String,
     installed: bool,
@@ -38,7 +37,6 @@ pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> T
             if tool.check.is_empty() {
                 continue;
             }
-            let agent_name = agent.name.clone();
             let tool_name = tool.name.clone();
             let tool_purpose = tool.purpose.clone();
             let check_cmd = tool.check.clone();
@@ -46,7 +44,6 @@ pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> T
             handles.push(tokio::spawn(async move {
                 let result = check_command(&check_cmd).await;
                 ToolCheckResult {
-                    agent: agent_name,
                     tool: tool_name,
                     purpose: tool_purpose,
                     installed: result.is_some(),

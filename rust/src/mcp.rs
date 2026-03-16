@@ -266,10 +266,10 @@ fn mcp_error_result(id: &Value, text: &str) -> Value {
 }
 
 /// Resolve the agent to use for a review: repo-specific override > builtin.
-fn resolve_agent<'a>(
+fn resolve_agent(
     name: &str,
     file_path: &str,
-    state: &'a ServerState,
+    state: &ServerState,
 ) -> Option<AgentDefinition> {
     // Check for repo-level .devtribunal_agents/
     if let Some(agents_dir) = resolve_agents_dir(file_path, false) {
