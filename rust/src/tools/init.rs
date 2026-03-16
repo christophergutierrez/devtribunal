@@ -88,7 +88,9 @@ fn ensure_gitignore(repo_path: &Path, entries: &[&str]) -> Vec<String> {
     }
 
     let new_content = format!("{existing}{addition}");
-    let _ = std::fs::write(&gitignore_path, new_content);
+    if let Err(e) = std::fs::write(&gitignore_path, &new_content) {
+        tracing::warn!("Failed to update .gitignore: {e}");
+    }
 
     to_add.iter().map(|e| e.to_string()).collect()
 }

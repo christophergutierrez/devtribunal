@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::runner::expand_runner_alternatives;
 use crate::shell::{safe_exec, split_command};
@@ -31,10 +31,11 @@ async fn check_command(cmd: &str) -> Option<(String, String)> {
 
 pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> ToolResult {
     let mut handles = Vec::new();
+    let mut seen = HashSet::new();
 
     for agent in agents.values() {
         for tool in &agent.recommended_tools {
-            if tool.check.is_empty() {
+            if tool.check.is_empty() || !seen.insert(tool.name.clone()) {
                 continue;
             }
             let tool_name = tool.name.clone();

@@ -13,6 +13,7 @@ use crate::types::{AgentDefinition, AgentRole, load_embedded_agents, load_agents
 /// Shared server state.
 struct ServerState {
     builtin_agents: HashMap<String, AgentDefinition>,
+    /// Cache of repo-level agent overrides. Lock must never be held across .await points.
     agent_cache: Mutex<HashMap<PathBuf, HashMap<String, AgentDefinition>>>,
 }
 
@@ -273,7 +274,7 @@ fn resolve_agent(
 ) -> Option<AgentDefinition> {
     // Check for repo-level .devtribunal_agents/
     if let Some(agents_dir) = resolve_agents_dir(file_path, false) {
-        let mut cache = state.agent_cache.lock().unwrap();
+        let mut cache = state.agent_cache.lock().unwrap_or_else(|e| e.into_inner());
         let repo_agents = cache.entry(agents_dir.clone()).or_insert_with(|| {
             load_agents_from_dir(&agents_dir).unwrap_or_default()
         });
@@ -309,7 +310,7 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
         };
         let agents = if let Some(repo_path) = &input.repo_path {
             if let Some(agents_dir) = resolve_agents_dir(repo_path, true) {
-                let mut cache = state.agent_cache.lock().unwrap();
+                let mut cache = state.agent_cache.lock().unwrap_or_else(|e| e.into_inner());
                 cache.entry(agents_dir.clone()).or_insert_with(|| {
                     load_agents_from_dir(&agents_dir).unwrap_or_default()
                 }).clone()
@@ -335,7 +336,7 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                 Ok(v) => v,
                 Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
             };
-            let agent = state.builtin_agents.get(name).unwrap();
+            let agent = builtin_agent;
             let result = crate::tools::orchestrate::execute_orchestrate(agent, &input.findings, input.context.as_deref());
             mcp_result(id, tool_result(&result.content, result.is_error))
         }

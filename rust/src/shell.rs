@@ -10,6 +10,9 @@ pub fn validate_file_path(file_path: &str) -> Result<(), String> {
             &file_path[..file_path.len().min(200)]
         ));
     }
+    if file_path.contains("..") {
+        return Err("Unsafe file path rejected: path contains traversal sequence".to_string());
+    }
     Ok(())
 }
 
@@ -87,6 +90,8 @@ mod tests {
         assert!(validate_file_path("/tmp/$HOME/foo").is_err());
         assert!(validate_file_path("/tmp/foo'bar").is_err());
         assert!(validate_file_path("/tmp/foo|bar").is_err());
+        assert!(validate_file_path("../../etc/passwd").is_err());
+        assert!(validate_file_path("/tmp/../etc/passwd").is_err());
     }
 
     #[test]
