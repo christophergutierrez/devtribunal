@@ -151,7 +151,7 @@ jobs:
             echo "Formula unchanged, skipping commit"
           else
             git commit -m "chore: update Homebrew formula for ${GITHUB_REF_NAME} [skip ci]"
-            git push origin HEAD:main
+            git push origin HEAD:master
           fi
 
       - name: Update Homebrew tap
