@@ -116,34 +116,11 @@ export function buildReviewPrompt(
     parts.push(context);
   }
 
-  parts.push("\n## Required Output Format\n");
-  parts.push(`Respond with a JSON object matching this exact schema:
-
-\`\`\`json
-{
-  "agent": ${JSON.stringify(agent.name)},
-  "file": ${JSON.stringify(filePath)},
-  "findings": [
-    {
-      "severity": "critical | high | medium | low | info",
-      "confidence": "confirmed | likely | possible",
-      "location": "file_path:line_number",
-      "observation": "What you found",
-      "why_it_matters": "Why this is a problem",
-      "recommended_fix": "How to fix it"
-    }
-  ],
-  "summary": "X critical, Y high, Z medium findings"
-}
-\`\`\`
-
-Rules:
-- Return ONLY the JSON object, no surrounding text
-- Every finding MUST have all six fields
-- Location MUST include line number when possible
-- If no issues found, return empty findings array with summary "No findings"
-- Be specific in observations — reference actual code, not generic advice
-- If linter findings are provided above, reference them where relevant — confirm, expand on, or contextualize what the tools found`);
+  // Linter cross-reference note (only when linter output is available)
+  if (linterOutput) {
+    parts.push("\n## Note\n");
+    parts.push("If linter findings are provided above, reference them where relevant — confirm, expand on, or contextualize what the tools found.");
+  }
 
   return parts.join("\n");
 }

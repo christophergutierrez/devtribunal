@@ -4,7 +4,7 @@ import type { AgentDefinition } from "../types.js";
 const OrchestrateInputSchema = z.object({
   findings: z
     .string()
-    .describe("JSON string of review findings from specialist agents"),
+    .describe("Specialist review findings (structured Markdown from specialist agents)"),
   context: z
     .string()
     .optional()
@@ -20,7 +20,8 @@ export const orchestrateInputJsonSchema = {
   properties: {
     findings: {
       type: "string" as const,
-      description: "JSON string of review findings from specialist agents",
+      description:
+        "Specialist review findings (structured Markdown from specialist agents)",
     },
     context: {
       type: "string" as const,
@@ -46,9 +47,7 @@ export function buildOrchestratePrompt(
   }
 
   parts.push("\n## Specialist Findings\n");
-  parts.push("```json");
   parts.push(findings);
-  parts.push("```");
 
   if (context) {
     parts.push("\n## Additional Context\n");
@@ -67,11 +66,9 @@ export async function executeOrchestrate(
   agent: AgentDefinition,
   input: OrchestrateInput
 ): Promise<{ content: string; isError: boolean }> {
-  try {
-    JSON.parse(input.findings);
-  } catch (err) {
+  if (!input.findings.trim()) {
     return {
-      content: `Invalid findings JSON: ${err instanceof Error ? err.message : String(err)}. Expected a JSON string from specialist agent output.`,
+      content: "Empty findings string. Expected structured Markdown from specialist agent output.",
       isError: true,
     };
   }
