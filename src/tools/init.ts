@@ -32,9 +32,24 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ".proto": "protobuf",
 };
 
+const GITIGNORE_ENTRIES = [
+  "devtribunal_agents/",
+  ".claude/commands/dt/",
+];
+
 async function detectLanguages(repoPath: string): Promise<Set<string>> {
   const languages = new Set<string>();
-  const dirsToScan = [repoPath, join(repoPath, "src"), join(repoPath, "lib")];
+  const dirsToScan = [
+    repoPath,
+    join(repoPath, "src"),
+    join(repoPath, "lib"),
+    join(repoPath, "app"),
+    join(repoPath, "cmd"),
+    join(repoPath, "internal"),
+    join(repoPath, "packages"),
+    join(repoPath, "test"),
+    join(repoPath, "tests"),
+  ];
 
   for (const dir of dirsToScan) {
     let entries: string[];
@@ -60,6 +75,38 @@ async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Ensure .gitignore in the target repo contains entries for devtribunal paths.
+ * Returns the list of entries that were added (empty if all already present).
+ */
+async function ensureGitignore(
+  repoPath: string,
+  entries: string[]
+): Promise<string[]> {
+  const gitignorePath = join(repoPath, ".gitignore");
+
+  let existing = "";
+  try {
+    existing = await readFile(gitignorePath, "utf-8");
+  } catch {
+    // No .gitignore yet — will create one
+  }
+
+  const existingLines = existing.split("\n").map((l) => l.trim());
+  const toAdd = entries.filter((entry) => !existingLines.includes(entry));
+
+  if (toAdd.length === 0) return [];
+
+  const addition =
+    (existing && !existing.endsWith("\n") ? "\n" : "") +
+    "\n# devtribunal (remove these lines to version-control agents and skills)\n" +
+    toAdd.join("\n") +
+    "\n";
+
+  await writeFile(gitignorePath, existing + addition, "utf-8");
+  return toAdd;
 }
 
 interface ScaffoldResult {
@@ -97,7 +144,7 @@ async function scaffoldSkills(
 
     if (await fileExists(targetPath)) {
       const existingContent = await readFile(targetPath, "utf-8");
-      if (existingContent === templateContent) {
+      if (existingContent.trim() === templateContent.trim()) {
         results.push(`  SKIPPED ${filename} (already current)`);
         skipped++;
         continue;
@@ -188,7 +235,7 @@ export async function executeInit(
         continue;
       }
 
-      if (existingRaw === raw) {
+      if (existingRaw.trim() === raw.trim()) {
         results.push(`  SKIPPED ${filename} (already current)`);
         skipped++;
         continue;
@@ -211,6 +258,13 @@ export async function executeInit(
   const skillTemplatesDir = join(builtinAgentsDir, "..", "templates", "skills");
   const skillResult = await scaffoldSkills(input.repo_path, skillTemplatesDir);
 
+  // Add to .gitignore if anything was written
+  const totalWritten = written + skillResult.written;
+  let gitignoreAdded: string[] = [];
+  if (totalWritten > 0) {
+    gitignoreAdded = await ensureGitignore(input.repo_path, GITIGNORE_ENTRIES);
+  }
+
   const summary = [
     `Languages detected: ${[...languages].join(", ")}`,
     "",
@@ -223,13 +277,22 @@ export async function executeInit(
     `${skillResult.written} written, ${skillResult.skipped} skipped`,
   ];
 
-  if (written > 0 || skillResult.written > 0) {
+  if (gitignoreAdded.length > 0) {
+    summary.push(
+      "",
+      `## .gitignore`,
+      `  Added: ${gitignoreAdded.join(", ")}`,
+      `  These paths are gitignored by default (no trace in your repo).`
+    );
+  }
+
+  if (totalWritten > 0) {
     summary.push(
       "",
       "You can:",
       "  - Edit agent files to customize review criteria for your team",
       "  - Use /dt:full, /dt:incremental-pr-ready, /dt:incremental-staged, /dt:incremental-wip",
-      "  - Commit both devtribunal_agents/ and .claude/commands/dt/ to version control",
+      "  - To version-control your agents and skills, remove the devtribunal lines from .gitignore",
       "  - Add source: custom to agent frontmatter for files you create from scratch"
     );
   }

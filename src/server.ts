@@ -72,20 +72,21 @@ const checkToolsInputJsonSchema = {
 
 export function createServer(
   builtinAgents: Map<string, AgentDefinition>,
-  builtinAgentsDir: string
+  builtinAgentsDir: string,
+  version: string
 ): Server {
   const agentCache = new Map<string, Map<string, AgentDefinition>>();
 
   async function getAgents(resolvedDir: string): Promise<Map<string, AgentDefinition>> {
     const cached = agentCache.get(resolvedDir);
     if (cached) return cached;
-    const agents = await getAgents(resolvedDir);
+    const agents = await loadAllAgents(resolvedDir);
     agentCache.set(resolvedDir, agents);
     return agents;
   }
 
   const server = new Server(
-    { name: "devtribunal", version: "0.0.1" },
+    { name: "devtribunal", version },
     { capabilities: { tools: {} } }
   );
 
