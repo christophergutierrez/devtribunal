@@ -5,7 +5,7 @@ import { execFile as nodeExecFile } from "node:child_process";
  * Rejects paths containing characters that could be used for command injection.
  */
 export function validateFilePath(filePath: string): void {
-  if (/[`$";&|!\n\r\0]/.test(filePath)) {
+  if (/[`$"';&|!\n\r\0]/.test(filePath)) {
     throw new Error(
       `Unsafe file path rejected: path contains shell metacharacters. ` +
       `Path: ${filePath.slice(0, 200)}`

@@ -62,10 +62,10 @@ export function buildOrchestratePrompt(
   return parts.join("\n");
 }
 
-export async function executeOrchestrate(
+export function executeOrchestrate(
   agent: AgentDefinition,
   input: OrchestrateInput
-): Promise<{ content: string; isError: boolean }> {
+): { content: string; isError: boolean } {
   if (!input.findings.trim()) {
     return {
       content: "Empty findings string. Expected structured Markdown from specialist agent output.",

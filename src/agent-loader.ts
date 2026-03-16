@@ -135,12 +135,14 @@ export async function loadAllAgents(
   }
 
   const mdFiles = entries.filter((e) => e.endsWith(".md"));
-  const loaded = await Promise.all(
+  const results = await Promise.allSettled(
     mdFiles.map((entry) => loadAgent(join(agentsDir, entry)))
   );
 
-  for (const agent of loaded) {
-    agents.set(agent.name, agent);
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      agents.set(r.value.name, r.value);
+    }
   }
 
   return agents;

@@ -18,12 +18,8 @@ async function checkInstalled(
   for (const alt of alternatives) {
     const { bin, args } = splitCommand(alt.cmd);
     const result = await safeExecFile(bin, args, { timeout: timeoutMs });
-    if (result.exitCode >= 0 && result.exitCode !== -1) {
-      // exitCode 0 = success, but some --version commands exit non-zero
-      // We consider anything that didn't error/timeout as "installed"
-      if (result.stderr !== "Process timed out" && !result.stderr.startsWith("Error: spawn")) {
-        return alt.runner;
-      }
+    if (result.exitCode === 0) {
+      return alt.runner;
     }
   }
   return null;

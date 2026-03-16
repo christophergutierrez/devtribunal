@@ -4,7 +4,7 @@ MCP server where each tool is a specialist code review agent. 13 languages, stru
 
 ## What it does
 
-AI assistants call devtribunal's review tools via MCP and get back structured, severity-rated findings — not freeform opinions. Multiple specialists can be composed and synthesized by two orchestrator agents (Architect and Manager) into prioritized action plans.
+AI assistants call devtribunal's review tools via MCP and get back structured, severity-rated findings — not freeform opinions. Multiple specialists can be composed and synthesized by three orchestrator agents (Architect, Project Docs Auditor, and Manager) into prioritized action plans.
 
 **12 specialist agents** covering 13 languages:
 
@@ -241,7 +241,7 @@ src/
     init.ts             # dt_init scaffolding + gitignore management
     check-tools.ts      # Tool availability checker
 
-agents/                 # Built-in agent definitions (15 files)
+agents/                 # Built-in agent definitions (18 files)
 templates/skills/       # Claude Code skill templates
 ```
 
