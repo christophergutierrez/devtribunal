@@ -46,6 +46,11 @@ Do NOT restate the findings. Transform them into a plan.
 - Same pattern: If the fix is the same pattern repeated, group for consistency
 - Dependencies: If fix A must happen before fix B, they're one work unit
 
+### Risk & Blast Radius
+- High blast radius: Touches core paths, auth, or shared utilities
+- Low blast radius: Localized to a single UI component or edge-case handler
+- Testing needs: Does this require manual QA, performance testing, or complex integration tests?
+
 ### Deferral Criteria
 - Low impact + high effort = defer
 - Stable code with no recent changes = defer

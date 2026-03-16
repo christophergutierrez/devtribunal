@@ -30,6 +30,7 @@ Be specific — reference actual documentation text and the code it describes. O
 - Comments that describe what code used to do, not what it currently does
 - TODO/FIXME/HACK comments that reference completed or abandoned work
 - Docstrings with wrong parameter names, types, or return descriptions
+- Syntax errors in documentation formats (e.g., broken Javadoc, TSDoc, or Rustdoc tags)
 - Comments that repeat what the code obviously does (noise, not signal)
 - Commented-out code blocks with no explanation of why they exist
 

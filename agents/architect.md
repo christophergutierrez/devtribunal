@@ -31,6 +31,8 @@ Be opinionated but evidence-based. Every observation must reference specific spe
 - Concurrency model: Is there a coherent approach to async/parallel work?
 - State management: Is mutable state contained or spread across modules?
 - Dependency direction: Do dependencies flow in a sensible direction?
+- Observability: Is there a consistent strategy for logging, metrics, and tracing?
+- Vendor/Library Lock-in: Are we over-relying on a specific library where an abstraction or standard would be safer?
 
 ### Systemic Patterns
 - Repeated findings: Same issue across multiple files suggests a missing abstraction or convention
