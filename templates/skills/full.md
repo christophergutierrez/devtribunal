@@ -4,7 +4,13 @@ Perform a comprehensive devtribunal code review of this repository.
 
 1. **Detect languages**: Scan the repo for source files and identify which languages are present (TypeScript, Python, Rust, Go, Java, PHP, C#, C, Dart, Lua, SQL, Protobuf).
 
-2. **Review files**: For each detected language, find all relevant source files and call the matching `review_*` MCP tool on each file. Use these tool names:
+2. **Gather structural context (if repomap is available)**: If `get_file_outline`, `find_implementations`, or `graph_query` MCP tools are available, use them before reviewing to enrich each review with codebase context:
+   - `get_file_outline` on each file to understand its symbol structure
+   - `find_implementations` for files that define interfaces, traits, or abstract classes
+   - `get_repo_outline` once to give the architect a high-level codebase overview
+   Pass this context as the `context` parameter when calling review tools below.
+
+3. **Review files**: For each detected language, find all relevant source files and call the matching `review_*` MCP tool on each file. Use these tool names:
    - TypeScript/JavaScript: `review_typescript`
    - Python: `review_python`
    - Rust: `review_rust`
@@ -20,10 +26,10 @@ Perform a comprehensive devtribunal code review of this repository.
 
    Run reviews in parallel where possible. Pass absolute file paths. If $ARGUMENTS is provided, scope the review to those files or directories instead of the full repo.
 
-3. **Check documentation**: Call `check_docs` on README and other key documentation files.
+4. **Check documentation**: Call `check_docs` on README and other key documentation files.
 
-4. **Architect synthesis**: Collect all findings from step 2 and 3 as a JSON string. Call `architect` with these combined findings to identify cross-cutting concerns and systemic patterns.
+5. **Architect synthesis**: Collect all findings from steps 3 and 4 as a JSON string. Call `architect` with these combined findings to identify cross-cutting concerns and systemic patterns. If repomap context was gathered in step 2, include the repo outline as additional context.
 
-5. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized, effort-rated action plan.
+6. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized, effort-rated action plan.
 
-6. **Present results**: Show the final action plan to the user, organized by priority and work unit.
+7. **Present results**: Show the final action plan to the user, organized by priority and work unit.
