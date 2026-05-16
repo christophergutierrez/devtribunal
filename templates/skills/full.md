@@ -28,10 +28,15 @@ Perform a comprehensive devtribunal code review of this repository.
 
 4. **Check file-level documentation**: Call `check_docs` on source files with significant doc comments, docstrings, or inline documentation.
 
-5. **Architect synthesis**: Collect all Markdown findings from steps 3 and 4 into a single string. Call the `architect` orchestrator tool with these combined findings to identify cross-cutting concerns and systemic patterns. If repomap context was gathered in step 2, include the repo outline as additional context.
+5. **Structural analysis**: Run the following tools in parallel to gather codebase-wide signals:
+   - `check_tracking` with `repo_path` — git hygiene audit (tracked secrets, ignored source)
+   - `check_deps` with `repo_path` — dependency vulnerability scan via OSV.dev
+   - `check_patterns` with `repo_path` — cross-file patterns (cycles, dead exports, duplicated literals)
 
-6. **Check project-level documentation**: Read the contents of README, CHANGELOG, architecture docs, and other project-level documentation files. Call the `check_project_docs` orchestrator tool with the architect output as `findings` and the documentation contents as `context`. This checks whether project docs are consistent with what the review revealed.
+6. **Architect synthesis**: Collect all Markdown findings from steps 3, 4, and 5 into a single string. Call the `architect` orchestrator tool with these combined findings to identify cross-cutting concerns and systemic patterns. If repomap context was gathered in step 2, include the repo outline as additional context.
 
-7. **Manager action plan**: Call the `manager` orchestrator tool with the architect output, the project docs audit from step 6, and the original specialist findings to produce a prioritized, effort-rated action plan.
+7. **Check project-level documentation**: Read the contents of README, CHANGELOG, architecture docs, and other project-level documentation files. Call the `check_project_docs` orchestrator tool with the architect output as `findings` and the documentation contents as `context`. This checks whether project docs are consistent with what the review revealed.
 
-8. **Present results**: Show the final action plan to the user, organized by priority and work unit.
+8. **Manager action plan**: Call the `manager` orchestrator tool with the architect output, the project docs audit from step 7, and the original specialist findings to produce a prioritized, effort-rated action plan.
+
+9. **Present results**: Show the final action plan to the user, organized by priority and work unit.

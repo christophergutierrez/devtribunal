@@ -1,3 +1,4 @@
+mod lang;
 mod mcp;
 mod runner;
 mod shell;

@@ -78,6 +78,7 @@ pub struct LinterRunResult {
 
 /// Parse a single agent definition from raw markdown with YAML frontmatter.
 pub fn parse_agent(file_name: &str, raw: &str) -> anyhow::Result<AgentDefinition> {
+    let raw = &raw.replace("\r\n", "\n");
     // Split frontmatter from body on --- delimiters
     let (frontmatter_str, body) = split_frontmatter(raw)
         .ok_or_else(|| anyhow::anyhow!("No YAML frontmatter found in {file_name}"))?;
@@ -89,12 +90,12 @@ pub fn parse_agent(file_name: &str, raw: &str) -> anyhow::Result<AgentDefinition
         file_name.strip_suffix(".md").unwrap_or(file_name).to_string()
     });
 
-    // Split body into sections using markers
-    let checklist_marker = "## Checklist";
-    let output_format_marker = "## Output Format";
+    // Split body into sections using markers (must be at line start)
+    let checklist_header = "## Checklist";
+    let output_format_header = "## Output Format";
 
-    let checklist_idx = body.find(checklist_marker);
-    let output_format_idx = body.find(output_format_marker);
+    let checklist_idx = body.find(&format!("\n{checklist_header}")).map(|i| i + 1);
+    let output_format_idx = body.find(&format!("\n{output_format_header}")).map(|i| i + 1);
 
     // system_prompt = everything before the first marker
     let first_marker = [checklist_idx, output_format_idx]
@@ -110,7 +111,7 @@ pub fn parse_agent(file_name: &str, raw: &str) -> anyhow::Result<AgentDefinition
     // checklist = between ## Checklist and ## Output Format (or end)
     let checklist = match checklist_idx {
         Some(ci) => {
-            let start = ci + checklist_marker.len();
+            let start = ci + checklist_header.len();
             let end = if output_format_idx.is_some_and(|oi| oi > ci) {
                 output_format_idx.unwrap()
             } else {
@@ -123,7 +124,7 @@ pub fn parse_agent(file_name: &str, raw: &str) -> anyhow::Result<AgentDefinition
 
     // output_format = everything after ## Output Format
     let output_format = match output_format_idx {
-        Some(oi) => body[oi + output_format_marker.len()..].trim().to_string(),
+        Some(oi) => body[oi + output_format_header.len()..].trim().to_string(),
         None => String::new(),
     };
 
@@ -363,5 +364,15 @@ Body content.
 "#;
         let agent = parse_agent("my_agent.md", raw).unwrap();
         assert_eq!(agent.name, "my_agent");
+    }
+
+    #[test]
+    fn test_parse_windows_line_endings() {
+        let raw = "---\r\nname: win_agent\r\ndescription: \"Windows test\"\r\n---\r\n\r\nSystem prompt here.\r\n\r\n## Checklist\r\n\r\n- Check things\r\n\r\n## Output Format\r\n\r\nFormat here.\r\n";
+        let agent = parse_agent("win_agent.md", raw).unwrap();
+        assert_eq!(agent.name, "win_agent");
+        assert!(agent.system_prompt.contains("System prompt here"));
+        assert!(agent.checklist.contains("Check things"));
+        assert!(agent.output_format.contains("Format here"));
     }
 }

@@ -1,5 +1,5 @@
 use crate::types::AgentDefinition;
-use crate::tools::review::ToolResult;
+use super::ToolResult;
 
 fn build_orchestrate_prompt(
     agent: &AgentDefinition,

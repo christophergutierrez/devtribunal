@@ -59,15 +59,17 @@ Both paths are added to `.gitignore` by default — no trace in your repo.
 
 Use the scaffolded skill commands:
 
-- `/dt:full` — comprehensive review of the entire repo
-- `/dt:incremental-staged` — review staged changes (ready to commit)
-- `/dt:incremental-pr-ready` — review unpushed commits (ready to push)
-- `/dt:incremental-wip` — review all work-in-progress changes
+- `/dt:full` — comprehensive review of the entire repo (includes vuln scan, git hygiene, pattern detection)
+- `/dt:incremental-staged` — review staged changes + blast radius
+- `/dt:incremental-pr-ready` — review unpushed commits + blast radius
+- `/dt:incremental-wip` — review all work-in-progress + blast radius
 
 Or call tools directly:
 
 ```
 review_typescript({ file_path: "/path/to/file.ts" })
+blast_radius({ repo_path: "/path/to/repo", scope: "staged" })
+check_deps({ repo_path: "/path/to/repo" })
 ```
 
 ### CLI commands
@@ -111,9 +113,13 @@ AI assistants call devtribunal's review tools via MCP and get back structured, s
 **1 documentation auditor:**
 - `check_docs` — reviews README, docstrings, and inline comments for accuracy and staleness
 
-**2 management tools:**
+**6 management tools:**
 - `dt_init` — scaffolds agent definitions and skill commands into a target repo
 - `check_tools` — checks which recommended linters are installed
+- `blast_radius` — diff-aware impact analysis: changed symbols + files that depend on them
+- `check_tracking` — git hygiene audit: tracked secrets/artifacts, ignored source files, with fix commands
+- `check_deps` — dependency vulnerability scan via OSV.dev batch API
+- `check_patterns` — cross-file structural analysis: circular deps, dead exports, duplicated literals
 
 ## Pipeline
 
@@ -150,15 +156,28 @@ The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in seq
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────┐
-│  3. ARCHITECT                                           │
-│  Synthesize specialist findings into:                   │
+│  3. STRUCTURAL ANALYSIS  (parallel)                     │
+│                                                         │
+│  ┌────────────────┐ ┌──────────────┐ ┌──────────────┐  │
+│  │ check_tracking │ │  check_deps  │ │check_patterns│  │
+│  │  git hygiene   │ │  vuln scan   │ │ cycles/dead  │  │
+│  └───────┬────────┘ └──────┬───────┘ └──────┬───────┘  │
+│          └─────────────────┼────────────────┘           │
+│                            ▼                            │
+│  Tracking issues, CVEs, structural patterns             │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│  4. ARCHITECT                                           │
+│  Synthesize specialist + structural findings into:      │
 │  • Cross-cutting concerns (risk vs debt, confidence)    │
 │  • Specialist overrides (escalate / downgrade / dismiss)│
 └────────────────────────┬────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│  4. CHECK PROJECT DOCS                                  │
+│  5. CHECK PROJECT DOCS                                  │
 │  Audit project-level docs against architect findings:   │
 │  • README claims contradicted by findings               │
 │  • Architecture docs that don't match actual structure  │
@@ -167,7 +186,7 @@ The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in seq
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│  5. MANAGER                                             │
+│  6. MANAGER                                             │
 │  Transform all findings into:                           │
 │  • Prioritized work units with effort estimates         │
 │  • Concrete steps referencing specialist fixes          │
@@ -176,7 +195,7 @@ The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in seq
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│  6. PRESENT                                             │
+│  7. PRESENT                                             │
 │  Action plan shown to user, organized by priority       │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -226,20 +245,25 @@ Orchestrators use the same format with `role: orchestrator` and a `## Output For
 
 ```
 rust/src/
-  main.rs           # CLI (clap) + entry point
-  mcp.rs            # JSON-RPC 2.0 stdio server
-  types.rs          # Structs, agent parsing, embedded assets
-  runner.rs         # Package runner alternatives (bunx/pnpx/npx)
-  shell.rs          # Safe process execution, path validation
+  main.rs             # CLI (clap) + entry point
+  mcp.rs              # JSON-RPC 2.0 stdio server
+  types.rs            # Structs, agent parsing, embedded assets
+  lang.rs             # Shared language detection utilities
+  runner.rs           # Package runner alternatives (bunx/pnpx/npx)
+  shell.rs            # Safe process execution, path validation
   tools/
-    review.rs       # Specialist review prompt builder
-    orchestrate.rs  # Orchestrator prompt builder
-    linter.rs       # Linter execution (parallel, multi-format JSON parsing)
-    init.rs         # dt_init scaffolding + gitignore management
-    check_tools.rs  # Tool availability checker
+    review.rs         # Specialist review prompt builder
+    orchestrate.rs    # Orchestrator prompt builder
+    linter.rs         # Linter execution (parallel, multi-format JSON parsing)
+    init.rs           # dt_init scaffolding + gitignore management
+    check_tools.rs    # Tool availability checker
+    blast_radius.rs   # Diff-aware impact analysis (changed symbols + dependents)
+    check_tracking.rs # Git hygiene audit (secrets, artifacts, ignored source)
+    check_deps.rs     # Dependency vulnerability scan (OSV.dev)
+    check_patterns.rs # Cross-file patterns (cycles, dead exports, duplicates)
 
-agents/             # 18 agent definitions (embedded at compile time)
-templates/skills/   # 4 skill templates (embedded at compile time)
+agents/               # 16 agent definitions (embedded at compile time)
+templates/skills/     # 4 skill templates (embedded at compile time)
 ```
 
 Key design decisions:
@@ -249,4 +273,4 @@ Key design decisions:
 - **Host-delegated LLM** — tools return prompts, the host does the review
 - **Best-effort linters** — linter failures are silently caught, review continues
 - **Zero trace** — `dt_init` gitignores scaffolded files by default
-- **Repo overrides** — `.devtribunal_agents/` in a repo overrides built-in agents
+- **Repo overrides** — `.devtribunal_agents/` in a repo overrides built-in agents (orchestrators require `repo_path` in tool call)

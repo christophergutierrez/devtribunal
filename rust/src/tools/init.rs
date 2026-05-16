@@ -1,27 +1,9 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::tools::review::ToolResult;
+use super::ToolResult;
+use crate::lang::EXTENSION_TO_LANGUAGE;
 use crate::types::{embedded_skills, parse_agent};
-
-const EXTENSION_TO_LANGUAGE: &[(&str, &str)] = &[
-    (".ts", "typescript"),
-    (".tsx", "typescript"),
-    (".js", "javascript"),
-    (".jsx", "javascript"),
-    (".py", "python"),
-    (".rs", "rust"),
-    (".go", "go"),
-    (".java", "java"),
-    (".php", "php"),
-    (".cs", "csharp"),
-    (".c", "c"),
-    (".h", "c"),
-    (".dart", "dart"),
-    (".lua", "lua"),
-    (".sql", "sql"),
-    (".proto", "protobuf"),
-];
 
 const GITIGNORE_ENTRIES: &[&str] = &[
     ".devtribunal_agents/",

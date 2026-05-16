@@ -37,10 +37,12 @@ If no files are found, inform the user there are no work-in-progress changes to 
 
    Run reviews in parallel where possible. Pass absolute file paths.
 
-4. **Check documentation**: If any README or documentation files are in the changed list, call `check_docs` on them.
+4. **Blast radius**: Call `blast_radius` with `repo_path` and `scope: "staged"` to identify which other files depend on the changed symbols. Include dependent files as context for the architect.
 
-5. **Architect synthesis**: Collect all findings as a JSON string. Call `architect` with these combined findings. If repomap context was gathered in step 2, include it as additional context.
+5. **Check documentation**: If any README or documentation files are in the changed list, call `check_docs` on them.
 
-6. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized action plan.
+6. **Architect synthesis**: Collect all findings (reviews + blast radius) as a combined string. Call `architect` with these combined findings. If repomap context was gathered in step 2, include it as additional context.
 
-7. **Present results**: Show the final action plan, noting this review covers all uncommitted work-in-progress.
+7. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized action plan.
+
+8. **Present results**: Show the final action plan, noting this review covers all uncommitted work-in-progress and their blast radius.

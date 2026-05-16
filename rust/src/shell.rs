@@ -29,6 +29,29 @@ pub fn split_command(cmd: &str) -> (String, Vec<String>) {
     )
 }
 
+/// Split a command template and substitute `{file}` as a single argument.
+/// This preserves file paths with spaces as one argument rather than splitting them.
+pub fn split_command_with_file(cmd_template: &str, file_path: &str) -> (String, Vec<String>) {
+    let parts: Vec<&str> = cmd_template.split_whitespace().collect();
+    if parts.is_empty() {
+        return (String::new(), Vec::new());
+    }
+    let bin = parts[0].to_string();
+    let args = parts[1..]
+        .iter()
+        .map(|s| {
+            if *s == "{file}" {
+                file_path.to_string()
+            } else if s.contains("{file}") {
+                s.replace("{file}", file_path)
+            } else {
+                s.to_string()
+            }
+        })
+        .collect();
+    (bin, args)
+}
+
 #[derive(Debug)]
 pub struct ExecResult {
     pub stdout: String,
@@ -99,5 +122,38 @@ mod tests {
         let (bin, args) = split_command("npx eslint --format json /tmp/test.ts");
         assert_eq!(bin, "npx");
         assert_eq!(args, vec!["eslint", "--format", "json", "/tmp/test.ts"]);
+    }
+
+    #[test]
+    fn test_split_command_with_file_spaces() {
+        let (bin, args) = split_command_with_file(
+            "npx eslint --format json {file}",
+            "/Users/John Smith/project/file.ts",
+        );
+        assert_eq!(bin, "npx");
+        assert_eq!(
+            args,
+            vec!["eslint", "--format", "json", "/Users/John Smith/project/file.ts"]
+        );
+    }
+
+    #[test]
+    fn test_split_command_with_file_no_placeholder() {
+        let (bin, args) = split_command_with_file("golangci-lint run --fix", "/tmp/test.go");
+        assert_eq!(bin, "golangci-lint");
+        assert_eq!(args, vec!["run", "--fix"]);
+    }
+
+    #[test]
+    fn test_split_command_with_file_embedded() {
+        let (bin, args) = split_command_with_file(
+            "ruff check --output-format json {file}",
+            "/path with spaces/test.py",
+        );
+        assert_eq!(bin, "ruff");
+        assert_eq!(
+            args,
+            vec!["check", "--output-format", "json", "/path with spaces/test.py"]
+        );
     }
 }

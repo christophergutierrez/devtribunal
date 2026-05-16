@@ -1,10 +1,7 @@
 use crate::types::AgentDefinition;
 use crate::tools::linter;
 
-pub struct ToolResult {
-    pub content: String,
-    pub is_error: bool,
-}
+pub use super::ToolResult;
 
 /// Language hint from file extension.
 fn lang_for_ext(ext: &str) -> &str {
@@ -71,6 +68,8 @@ fn build_review_prompt(
     parts.join("\n")
 }
 
+const MAX_FILE_SIZE: usize = 512 * 1024; // 512KB
+
 pub async fn execute_review(
     agent: &AgentDefinition,
     file_path: &str,
@@ -88,6 +87,17 @@ pub async fn execute_review(
             };
         }
     };
+
+    if file_content.len() > MAX_FILE_SIZE {
+        let size_kb = file_content.len() / 1024;
+        return ToolResult {
+            content: format!(
+                "File skipped: {file_path} is {size_kb}KB (limit: {}KB). Likely generated or minified — exclude from review.",
+                MAX_FILE_SIZE / 1024
+            ),
+            is_error: false,
+        };
+    }
 
     // Run linters (best-effort)
     let linter_output = match linter::run_linters(file_path, &agent.recommended_tools).await {

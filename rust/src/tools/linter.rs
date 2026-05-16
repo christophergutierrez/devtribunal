@@ -2,30 +2,11 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::runner::expand_runner_alternatives;
-use crate::shell::{safe_exec, split_command, validate_file_path};
+use crate::runner::{check_tool_available, expand_runner_alternatives};
+use crate::shell::{safe_exec, split_command_with_file, validate_file_path};
 use crate::types::{LinterFinding, LinterRunResult, RecommendedTool};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Check if a tool is installed, trying package-runner alternatives.
-/// Returns the runner that works, or None.
-async fn check_installed(tool: &RecommendedTool) -> Option<String> {
-    if tool.check.is_empty() {
-        return None;
-    }
-
-    let alternatives = expand_runner_alternatives(&tool.check);
-    for alt in &alternatives {
-        let (bin, args) = split_command(&alt.cmd);
-        let result = safe_exec(&bin, &args, CHECK_TIMEOUT).await;
-        if result.exit_code == 0 {
-            return Some(alt.runner.clone());
-        }
-    }
-    None
-}
 
 /// Strip shell redirections like 2>&1 from command arguments.
 fn strip_redirections(args: &[String]) -> (Vec<String>, bool) {
@@ -284,8 +265,8 @@ pub async fn run_linters(
     let mut to_run = Vec::new();
 
     for tool in &runnable {
-        let runner = match check_installed(tool).await {
-            Some(r) => r,
+        let runner = match check_tool_available(&tool.check).await {
+            Some((r, _)) => r,
             None => {
                 skipped.push(tool.name.clone());
                 continue;
@@ -300,8 +281,7 @@ pub async fn run_linters(
             }
         }
 
-        let expanded = cmd_template.replace("{file}", file_path);
-        let (bin, raw_args) = split_command(&expanded);
+        let (bin, raw_args) = split_command_with_file(&cmd_template, file_path);
         let (clean_args, merge_stderr) = strip_redirections(&raw_args);
 
         to_run.push(ToRun {

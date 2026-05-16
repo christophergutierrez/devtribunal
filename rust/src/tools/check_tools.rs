@@ -1,13 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::runner::expand_runner_alternatives;
-use crate::shell::{safe_exec, split_command};
-use crate::tools::review::ToolResult;
+use crate::runner::check_tool_available;
 use crate::types::AgentDefinition;
-
-use std::time::Duration;
-
-const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+use super::ToolResult;
 
 struct ToolCheckResult {
     tool: String,
@@ -15,18 +10,6 @@ struct ToolCheckResult {
     installed: bool,
     version: String,
     runner: String,
-}
-
-async fn check_command(cmd: &str) -> Option<(String, String)> {
-    let alternatives = expand_runner_alternatives(cmd);
-    for alt in &alternatives {
-        let (bin, args) = split_command(&alt.cmd);
-        let result = safe_exec(&bin, &args, CHECK_TIMEOUT).await;
-        if result.exit_code == 0 && !result.stdout.trim().is_empty() {
-            return Some((result.stdout.trim().to_string(), alt.runner.clone()));
-        }
-    }
-    None
 }
 
 pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> ToolResult {
@@ -43,13 +26,13 @@ pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> T
             let check_cmd = tool.check.clone();
 
             handles.push(tokio::spawn(async move {
-                let result = check_command(&check_cmd).await;
+                let result = check_tool_available(&check_cmd).await;
                 ToolCheckResult {
                     tool: tool_name,
                     purpose: tool_purpose,
                     installed: result.is_some(),
-                    version: result.as_ref().map(|(v, _)| v.clone()).unwrap_or_default(),
-                    runner: result.map(|(_, r)| r).unwrap_or_default(),
+                    runner: result.as_ref().map(|(r, _)| r.clone()).unwrap_or_default(),
+                    version: result.map(|(_, v)| v).unwrap_or_default(),
                 }
             }));
         }
@@ -68,6 +51,8 @@ pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> T
             is_error: false,
         };
     }
+
+    tool_results.sort_by(|a, b| a.tool.cmp(&b.tool));
 
     let installed: Vec<&ToolCheckResult> = tool_results.iter().filter(|r| r.installed).collect();
     let missing: Vec<&ToolCheckResult> = tool_results.iter().filter(|r| !r.installed).collect();

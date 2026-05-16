@@ -24,7 +24,7 @@ pub async fn serve_stdio() -> Result<()> {
     let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
     let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
     eprintln!(
-        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 2 management tools (dt_init, check_tools)",
+        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 6 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns)",
         env!("CARGO_PKG_VERSION"),
         specialist_count,
         orchestrator_count,
@@ -143,6 +143,10 @@ fn orchestrate_input_schema() -> Value {
             "context": {
                 "type": "string",
                 "description": "Additional context about the review scope or priorities"
+            },
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the repository (used to resolve agent overrides from .devtribunal_agents/)"
             }
         },
         "required": ["findings"]
@@ -177,6 +181,67 @@ fn check_tools_input_schema() -> Value {
             }
         },
         "required": []
+    })
+}
+
+fn blast_radius_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the git repository"
+            },
+            "scope": {
+                "type": "string",
+                "description": "Diff scope: \"staged\", \"unpushed\", or a git ref range like \"main..HEAD\""
+            }
+        },
+        "required": ["repo_path", "scope"]
+    })
+}
+
+fn check_tracking_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the git repository"
+            }
+        },
+        "required": ["repo_path"]
+    })
+}
+
+fn check_deps_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the repository containing lockfiles"
+            }
+        },
+        "required": ["repo_path"]
+    })
+}
+
+fn check_patterns_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the repository to analyze"
+            },
+            "languages": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Languages to analyze (e.g. [\"rust\", \"typescript\"]). Auto-detected if omitted."
+            }
+        },
+        "required": ["repo_path"]
     })
 }
 
@@ -215,6 +280,30 @@ fn handle_list_tools(id: &Value, state: &ServerState) -> Value {
         "inputSchema": check_tools_input_schema()
     }));
 
+    tools.push(json!({
+        "name": "blast_radius",
+        "description": "Diff-aware impact analysis: identifies changed symbols and files that depend on them",
+        "inputSchema": blast_radius_input_schema()
+    }));
+
+    tools.push(json!({
+        "name": "check_tracking",
+        "description": "Git hygiene audit: finds tracked secrets/artifacts and ignored source files, with fix commands",
+        "inputSchema": check_tracking_input_schema()
+    }));
+
+    tools.push(json!({
+        "name": "check_deps",
+        "description": "Dependency vulnerability audit: queries OSV.dev for known CVEs in lockfile dependencies",
+        "inputSchema": check_deps_input_schema()
+    }));
+
+    tools.push(json!({
+        "name": "check_patterns",
+        "description": "Cross-file structural analysis: circular dependencies, dead exports, duplicated literals, error inconsistencies",
+        "inputSchema": check_patterns_input_schema()
+    }));
+
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -234,6 +323,7 @@ struct ReviewInput {
 struct OrchestrateInput {
     findings: String,
     context: Option<String>,
+    repo_path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -245,6 +335,28 @@ struct InitInput {
 #[derive(Deserialize)]
 struct CheckToolsInput {
     repo_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BlastRadiusInput {
+    repo_path: String,
+    scope: String,
+}
+
+#[derive(Deserialize)]
+struct CheckTrackingInput {
+    repo_path: String,
+}
+
+#[derive(Deserialize)]
+struct CheckDepsInput {
+    repo_path: String,
+}
+
+#[derive(Deserialize)]
+struct CheckPatternsInput {
+    repo_path: String,
+    languages: Option<Vec<String>>,
 }
 
 fn tool_result(text: &str, is_error: bool) -> Value {
@@ -324,6 +436,42 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
+    if name == "blast_radius" {
+        let input: BlastRadiusInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let result = crate::tools::blast_radius::execute_blast_radius(&input.repo_path, &input.scope).await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
+    if name == "check_tracking" {
+        let input: CheckTrackingInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let result = crate::tools::check_tracking::execute_check_tracking(&input.repo_path).await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
+    if name == "check_deps" {
+        let input: CheckDepsInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let result = crate::tools::check_deps::execute_check_deps(&input.repo_path).await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
+    if name == "check_patterns" {
+        let input: CheckPatternsInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let result = crate::tools::check_patterns::execute_check_patterns(&input.repo_path, input.languages.as_deref()).await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
     // Look up agent
     let builtin_agent = match state.builtin_agents.get(name) {
         Some(a) => a,
@@ -336,8 +484,13 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                 Ok(v) => v,
                 Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
             };
-            let agent = builtin_agent;
-            let result = crate::tools::orchestrate::execute_orchestrate(agent, &input.findings, input.context.as_deref());
+            let agent = if let Some(ref repo_path) = input.repo_path {
+                resolve_agent(name, repo_path, state)
+                    .unwrap_or_else(|| builtin_agent.clone())
+            } else {
+                builtin_agent.clone()
+            };
+            let result = crate::tools::orchestrate::execute_orchestrate(&agent, &input.findings, input.context.as_deref());
             mcp_result(id, tool_result(&result.content, result.is_error))
         }
         AgentRole::Specialist => {
