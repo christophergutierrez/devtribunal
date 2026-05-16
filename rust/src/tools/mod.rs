@@ -1,6 +1,7 @@
 pub mod blast_radius;
 pub mod check_deps;
 pub mod check_patterns;
+pub mod check_tests;
 pub mod check_tools;
 pub mod check_tracking;
 pub mod init;

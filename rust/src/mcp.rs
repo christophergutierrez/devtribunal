@@ -28,7 +28,7 @@ pub async fn serve_stdio() -> Result<()> {
     let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
     let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
     eprintln!(
-        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 6 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns)\n  backend: {}",
+        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 7 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, check_tests)\n  backend: {}",
         env!("CARGO_PKG_VERSION"),
         specialist_count,
         orchestrator_count,
@@ -255,6 +255,27 @@ fn check_patterns_input_schema() -> Value {
     })
 }
 
+fn check_tests_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the repository to analyze"
+            },
+            "run": {
+                "type": "boolean",
+                "description": "Whether to execute the detected test runner (default: false)"
+            },
+            "timeout_secs": {
+                "type": "integer",
+                "description": "Timeout in seconds for test execution (default: 120)"
+            }
+        },
+        "required": ["repo_path"]
+    })
+}
+
 fn handle_list_tools(id: &Value, state: &ServerState) -> Value {
     let mut tools = Vec::new();
 
@@ -314,6 +335,12 @@ fn handle_list_tools(id: &Value, state: &ServerState) -> Value {
         "inputSchema": check_patterns_input_schema()
     }));
 
+    tools.push(json!({
+        "name": "check_tests",
+        "description": "Test adequacy analysis: detects test coverage gaps, identifies test runner, and optionally executes tests",
+        "inputSchema": check_tests_input_schema()
+    }));
+
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -367,6 +394,13 @@ struct CheckDepsInput {
 struct CheckPatternsInput {
     repo_path: String,
     languages: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+struct CheckTestsInput {
+    repo_path: String,
+    run: Option<bool>,
+    timeout_secs: Option<u64>,
 }
 
 fn tool_result(text: &str, is_error: bool) -> Value {
@@ -485,6 +519,17 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
         };
         let result = crate::tools::check_patterns::execute_check_patterns(&input.repo_path, input.languages.as_deref()).await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
+    if name == "check_tests" {
+        let input: CheckTestsInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let run = input.run.unwrap_or(false);
+        let timeout_secs = input.timeout_secs.unwrap_or(120);
+        let result = crate::tools::check_tests::execute_check_tests(&input.repo_path, run, timeout_secs).await;
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
