@@ -156,7 +156,7 @@ jobs:
 
       - name: Update Homebrew tap
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
           tmpdir=$(mktemp -d)
           git clone "https://x-access-token:${GH_TOKEN}@github.com/christophergutierrez/homebrew-devtribunal.git" "$tmpdir"
