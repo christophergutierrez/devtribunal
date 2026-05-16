@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use serde_json::{json, Value};
+
 use super::ToolResult;
 use crate::lang::EXTENSION_TO_LANGUAGE;
 use crate::types::{embedded_skills, parse_agent};
@@ -75,6 +77,39 @@ fn ensure_gitignore(repo_path: &Path, entries: &[&str]) -> Vec<String> {
     }
 
     to_add.iter().map(|e| e.to_string()).collect()
+}
+
+fn ensure_mcp_json(repo_path: &Path) -> Option<String> {
+    let mcp_path = repo_path.join(".mcp.json");
+    let mut doc: Value = if mcp_path.exists() {
+        let raw = std::fs::read_to_string(&mcp_path).unwrap_or_default();
+        serde_json::from_str(&raw).unwrap_or_else(|_| json!({}))
+    } else {
+        json!({})
+    };
+
+    let servers = doc
+        .as_object_mut()?
+        .entry("mcpServers")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()?;
+
+    if servers.contains_key("devtribunal") {
+        return None;
+    }
+
+    servers.insert(
+        "devtribunal".to_string(),
+        json!({
+            "command": "devtribunal",
+            "args": [],
+            "type": "stdio"
+        }),
+    );
+
+    let output = serde_json::to_string_pretty(&doc).ok()?;
+    std::fs::write(&mcp_path, format!("{output}\n")).ok()?;
+    Some(".mcp.json".to_string())
 }
 
 fn scaffold_skills(repo_path: &Path) -> (Vec<String>, usize, usize) {
@@ -216,6 +251,9 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
     // Scaffold skills
     let (skill_results, skill_written, skill_skipped) = scaffold_skills(repo);
 
+    // Ensure .mcp.json has devtribunal entry
+    let mcp_json_added = ensure_mcp_json(repo);
+
     // Update .gitignore if anything was written
     let total_written = written + skill_written;
     let mut gitignore_added = Vec::new();
@@ -240,6 +278,13 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
     ));
     summary.extend(skill_results);
     summary.push(format!("{skill_written} written, {skill_skipped} skipped"));
+
+    if mcp_json_added.is_some() {
+        summary.push(String::new());
+        summary.push("## .mcp.json".to_string());
+        summary.push("  Added devtribunal MCP server entry (project-scope).".to_string());
+        summary.push("  Claude Code will load devtribunal only when working in this repo.".to_string());
+    }
 
     if !gitignore_added.is_empty() {
         summary.push(String::new());

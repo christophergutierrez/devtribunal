@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "devtribunal": {
+      "type": "stdio",
+      "command": "/home/chris/.cargo/bin/devtribunal",
+      "args": [],
+      "env": {}
+    }
+  }
+}
