@@ -1,8 +1,10 @@
+use std::path::Component;
 use std::time::Duration;
 use tokio::process::Command;
 
 /// Validate a file path for shell safety.
-/// Rejects paths containing characters that could be used for command injection.
+/// Rejects paths containing characters that could be used for command injection,
+/// or that contain `..` path traversal components.
 pub fn validate_file_path(file_path: &str) -> Result<(), String> {
     if file_path.contains(|c: char| "`$\"';&|!\n\r\0".contains(c)) {
         return Err(format!(
@@ -10,7 +12,8 @@ pub fn validate_file_path(file_path: &str) -> Result<(), String> {
             &file_path[..file_path.len().min(200)]
         ));
     }
-    if file_path.contains("..") {
+    let path = std::path::Path::new(file_path);
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
         return Err("Unsafe file path rejected: path contains traversal sequence".to_string());
     }
     Ok(())
@@ -61,38 +64,75 @@ pub struct ExecResult {
 
 /// Safe wrapper around tokio::process::Command.
 /// Does NOT invoke a shell — arguments are passed directly to the process.
+/// On timeout the child process is explicitly killed to avoid zombie processes.
 pub async fn safe_exec(
     bin: &str,
     args: &[String],
     timeout: Duration,
 ) -> ExecResult {
-    let result = tokio::time::timeout(timeout, async {
-        Command::new(bin)
-            .args(args)
-            .output()
-            .await
-    })
-    .await;
+    let mut child = match Command::new(bin)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            return ExecResult {
+                stdout: String::new(),
+                stderr: format!("Error: spawn {bin}: {e}"),
+                exit_code: -1,
+            };
+        }
+    };
 
-    match result {
-        Ok(Ok(output)) => {
-            let code = output.status.code().unwrap_or(1);
-            ExecResult {
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                exit_code: code,
+    // Take stdout/stderr handles before waiting so we can still kill the child on timeout.
+    // wait_with_output() consumes `child`, preventing a later kill() call.
+    let mut stdout_handle = child.stdout.take();
+    let mut stderr_handle = child.stderr.take();
+
+    tokio::select! {
+        status = child.wait() => {
+            // Read captured output from the handles
+            let stdout = match stdout_handle.take() {
+                Some(mut h) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut buf = Vec::new();
+                    let _ = h.read_to_end(&mut buf).await;
+                    String::from_utf8_lossy(&buf).to_string()
+                }
+                None => String::new(),
+            };
+            let stderr = match stderr_handle.take() {
+                Some(mut h) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut buf = Vec::new();
+                    let _ = h.read_to_end(&mut buf).await;
+                    String::from_utf8_lossy(&buf).to_string()
+                }
+                None => String::new(),
+            };
+            match status {
+                Ok(s) => {
+                    let code = s.code().unwrap_or(1);
+                    ExecResult { stdout, stderr, exit_code: code }
+                }
+                Err(e) => ExecResult {
+                    stdout: String::new(),
+                    stderr: format!("Error: waiting on {bin}: {e}"),
+                    exit_code: -1,
+                },
             }
         }
-        Ok(Err(e)) => ExecResult {
-            stdout: String::new(),
-            stderr: format!("Error: spawn {bin}: {e}"),
-            exit_code: -1,
-        },
-        Err(_) => ExecResult {
-            stdout: String::new(),
-            stderr: "Process timed out".to_string(),
-            exit_code: -1,
-        },
+        _ = tokio::time::sleep(timeout) => {
+            // Kill the child process to prevent zombies
+            let _ = child.kill().await;
+            ExecResult {
+                stdout: String::new(),
+                stderr: "Process timed out".to_string(),
+                exit_code: -1,
+            }
+        }
     }
 }
 
@@ -104,6 +144,9 @@ mod tests {
     fn test_validate_safe_path() {
         assert!(validate_file_path("/home/user/project/src/main.rs").is_ok());
         assert!(validate_file_path("/tmp/test file.ts").is_ok());
+        // Filenames containing ".." as a substring (not a path component) are valid
+        assert!(validate_file_path("/tmp/foo..bar.ts").is_ok());
+        assert!(validate_file_path("/tmp/file...name.rs").is_ok());
     }
 
     #[test]
@@ -113,6 +156,7 @@ mod tests {
         assert!(validate_file_path("/tmp/$HOME/foo").is_err());
         assert!(validate_file_path("/tmp/foo'bar").is_err());
         assert!(validate_file_path("/tmp/foo|bar").is_err());
+        // Actual path traversal components are still rejected
         assert!(validate_file_path("../../etc/passwd").is_err());
         assert!(validate_file_path("/tmp/../etc/passwd").is_err());
     }

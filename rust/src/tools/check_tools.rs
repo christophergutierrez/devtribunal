@@ -40,8 +40,9 @@ pub async fn execute_check_tools(agents: &HashMap<String, AgentDefinition>) -> T
 
     let mut tool_results = Vec::new();
     for handle in handles {
-        if let Ok(result) = handle.await {
-            tool_results.push(result);
+        match handle.await {
+            Ok(result) => tool_results.push(result),
+            Err(e) => tracing::warn!("tool check task panicked: {e}"),
         }
     }
 

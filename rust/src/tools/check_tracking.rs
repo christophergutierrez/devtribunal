@@ -139,10 +139,25 @@ fn classify_tracked_file(path: &str) -> Option<TrackingIssue> {
         }
     }
 
-    // Contains matches for secrets
+    // Component matches for secrets (check individual path components, not substrings)
+    let lower_components: Vec<&str> = lower_path.split('/').collect();
     for &(pattern, reason) in SECRET_CONTAINS {
-        if lower_path.contains(pattern) {
-            return Some(TrackingIssue { path: path.to_string(), category: TrackingCategory::Secret, reason });
+        if pattern.ends_with('/') {
+            // Directory pattern: check if any component matches
+            let dir_name = pattern.trim_end_matches('/');
+            if lower_components.contains(&dir_name) {
+                return Some(TrackingIssue { path: path.to_string(), category: TrackingCategory::Secret, reason });
+            }
+        } else {
+            // Check if any path component is the pattern exactly, its plural form,
+            // or starts with a dot followed by the pattern (e.g., ".secrets")
+            let plural = format!("{pattern}s");
+            let dot_prefix = format!(".{pattern}");
+            if lower_components.iter().any(|c| {
+                *c == pattern || *c == plural.as_str() || c.starts_with(dot_prefix.as_str())
+            }) {
+                return Some(TrackingIssue { path: path.to_string(), category: TrackingCategory::Secret, reason });
+            }
         }
     }
 
@@ -240,6 +255,12 @@ fn find_ignored_source(repo_path: &Path) -> Vec<IgnoredSourceFile> {
     ignored
 }
 
+/// Escape a path for safe embedding in single-quoted shell strings.
+/// Replaces `'` with `'\''` (end quote, escaped quote, start quote).
+fn shell_escape(path: &str) -> String {
+    path.replace('\'', "'\\''")
+}
+
 fn generate_fixes(issues: &[TrackingIssue]) -> String {
     if issues.is_empty() {
         return String::new();
@@ -256,7 +277,7 @@ fn generate_fixes(issues: &[TrackingIssue]) -> String {
     if !secrets.is_empty() {
         lines.push("# Remove tracked secrets".to_string());
         for issue in &secrets {
-            lines.push(format!("git rm --cached '{}'", issue.path));
+            lines.push(format!("git rm --cached '{}'", shell_escape(&issue.path)));
         }
         lines.push(String::new());
     }
@@ -265,9 +286,9 @@ fn generate_fixes(issues: &[TrackingIssue]) -> String {
         lines.push("# Remove tracked build artifacts".to_string());
         for issue in &artifacts {
             if issue.path.ends_with('/') || issue.path.contains('/') {
-                lines.push(format!("git rm --cached -r '{}'", issue.path));
+                lines.push(format!("git rm --cached -r '{}'", shell_escape(&issue.path)));
             } else {
-                lines.push(format!("git rm --cached '{}'", issue.path));
+                lines.push(format!("git rm --cached '{}'", shell_escape(&issue.path)));
             }
         }
         lines.push(String::new());
@@ -276,7 +297,7 @@ fn generate_fixes(issues: &[TrackingIssue]) -> String {
     if !binaries.is_empty() {
         lines.push("# Remove tracked binaries".to_string());
         for issue in &binaries {
-            lines.push(format!("git rm --cached '{}'", issue.path));
+            lines.push(format!("git rm --cached '{}'", shell_escape(&issue.path)));
         }
         lines.push(String::new());
     }
@@ -284,7 +305,7 @@ fn generate_fixes(issues: &[TrackingIssue]) -> String {
     if !ide.is_empty() {
         lines.push("# Remove tracked IDE/OS files".to_string());
         for issue in &ide {
-            lines.push(format!("git rm --cached '{}'", issue.path));
+            lines.push(format!("git rm --cached '{}'", shell_escape(&issue.path)));
         }
         lines.push(String::new());
     }
@@ -299,7 +320,7 @@ fn generate_fixes(issues: &[TrackingIssue]) -> String {
         }
     }
     for entry in &gitignore_adds {
-        lines.push(format!("echo '{entry}' >> .gitignore"));
+        lines.push(format!("echo '{}' >> .gitignore", shell_escape(entry)));
     }
 
     lines.push("```".to_string());
@@ -486,6 +507,53 @@ mod tests {
         assert!(classify_tracked_file("README.md").is_none());
         assert!(classify_tracked_file("Cargo.toml").is_none());
         assert!(classify_tracked_file("tests/integration_test.py").is_none());
+    }
+
+    #[test]
+    fn test_secret_component_match_not_substring() {
+        // "secret" as a path component should match
+        assert_eq!(
+            classify_tracked_file("path/with/secret/in/it").unwrap().category,
+            TrackingCategory::Secret
+        );
+        assert_eq!(
+            classify_tracked_file("config/secret/api.yml").unwrap().category,
+            TrackingCategory::Secret
+        );
+
+        // "secrets" (plural) and ".secrets" (dotfile) as path components should match
+        assert_eq!(
+            classify_tracked_file("config/secrets/db.yml").unwrap().category,
+            TrackingCategory::Secret
+        );
+        assert_eq!(
+            classify_tracked_file(".secrets/token").unwrap().category,
+            TrackingCategory::Secret
+        );
+
+        // "secret" as a substring of a filename/component should NOT match
+        assert!(classify_tracked_file("src/secret_santa.rs").is_none());
+        assert!(classify_tracked_file("lib/secretariat/mod.rs").is_none());
+        assert!(classify_tracked_file("docs/unsecretive_notes.txt").is_none());
+    }
+
+    #[test]
+    fn test_shell_escape() {
+        assert_eq!(shell_escape("simple/path"), "simple/path");
+        assert_eq!(shell_escape("it's a file"), "it'\\''s a file");
+        assert_eq!(shell_escape("path/with'quote/file"), "path/with'\\''quote/file");
+        assert_eq!(shell_escape("multiple'''quotes"), "multiple'\\'''\\'''\\''quotes");
+    }
+
+    #[test]
+    fn test_generate_fixes_escapes_quotes_in_paths() {
+        let issues = vec![TrackingIssue {
+            path: "config/it's-a-secret/key.pem".to_string(),
+            category: TrackingCategory::Secret,
+            reason: "Certificate/key file",
+        }];
+        let output = generate_fixes(&issues);
+        assert!(output.contains("git rm --cached 'config/it'\\''s-a-secret/key.pem'"));
     }
 
     #[test]

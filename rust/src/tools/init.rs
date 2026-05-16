@@ -12,33 +12,31 @@ const GITIGNORE_ENTRIES: &[&str] = &[
     ".claude/commands/dt/",
 ];
 
+const SKIP_SCAN_DIRS: &[&str] = &[
+    "node_modules", "target", "vendor", "dist", "build", "__pycache__",
+    ".gradle", ".next", ".nuxt", "coverage", ".nyc_output",
+];
+
 fn detect_languages(repo_path: &Path) -> HashSet<String> {
     let mut languages = HashSet::new();
-    let dirs_to_scan = [
-        repo_path.to_path_buf(),
-        repo_path.join("src"),
-        repo_path.join("lib"),
-        repo_path.join("app"),
-        repo_path.join("cmd"),
-        repo_path.join("internal"),
-        repo_path.join("packages"),
-        repo_path.join("test"),
-        repo_path.join("tests"),
-    ];
 
-    for dir in &dirs_to_scan {
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                let dot_ext = format!(".{ext}");
-                for &(pattern, lang) in EXTENSION_TO_LANGUAGE {
-                    if pattern == dot_ext {
-                        languages.insert(lang.to_string());
-                    }
+    let walker = walkdir::WalkDir::new(repo_path)
+        .max_depth(3)
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !name.starts_with('.') && !SKIP_SCAN_DIRS.contains(&name.as_ref())
+        });
+
+    for entry in walker.flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+            let dot_ext = format!(".{ext}");
+            for &(pattern, lang) in EXTENSION_TO_LANGUAGE {
+                if pattern == dot_ext {
+                    languages.insert(lang.to_string());
                 }
             }
         }
@@ -107,8 +105,17 @@ fn ensure_mcp_json(repo_path: &Path) -> Option<String> {
         }),
     );
 
-    let output = serde_json::to_string_pretty(&doc).ok()?;
-    std::fs::write(&mcp_path, format!("{output}\n")).ok()?;
+    let output = match serde_json::to_string_pretty(&doc) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("failed to serialize .mcp.json: {e}");
+            return None;
+        }
+    };
+    if let Err(e) = std::fs::write(&mcp_path, format!("{output}\n")) {
+        tracing::warn!("failed to write .mcp.json: {e}");
+        return None;
+    }
     Some(".mcp.json".to_string())
 }
 
@@ -118,7 +125,8 @@ fn scaffold_skills(repo_path: &Path) -> (Vec<String>, usize, usize) {
     let mut written = 0;
     let mut skipped = 0;
 
-    if std::fs::create_dir_all(&target_dir).is_err() {
+    if let Err(e) = std::fs::create_dir_all(&target_dir) {
+        tracing::warn!("failed to create skills directory {}: {e}", target_dir.display());
         return (vec!["  Failed to create skills directory".to_string()], 0, 0);
     }
 

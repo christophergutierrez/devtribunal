@@ -130,10 +130,10 @@ fn extract_rule_id(obj: &serde_json::Map<String, Value>) -> Option<String> {
 }
 
 /// Extract an array of finding items from various JSON structures.
-fn extract_items(parsed: &Value) -> Vec<&Value> {
+fn extract_items(parsed: &Value) -> Vec<Value> {
     // Direct array: [{...}, {...}]
     if let Some(arr) = parsed.as_array() {
-        return arr.iter().collect();
+        return arr.clone();
     }
 
     if let Some(obj) = parsed.as_object() {
@@ -142,8 +142,20 @@ fn extract_items(parsed: &Value) -> Vec<&Value> {
             let mut items = Vec::new();
             for result in results {
                 if let Some(r) = result.as_object() {
+                    let file_path = r.get("filePath").and_then(|v| v.as_str()).unwrap_or("");
                     if let Some(messages) = r.get("messages").and_then(|v| v.as_array()) {
-                        items.extend(messages.iter());
+                        for msg in messages {
+                            if file_path.is_empty() {
+                                items.push(msg.clone());
+                            } else {
+                                let mut enriched = msg.clone();
+                                if let Some(obj) = enriched.as_object_mut() {
+                                    obj.entry("filePath")
+                                        .or_insert_with(|| Value::String(file_path.to_string()));
+                                }
+                                items.push(enriched);
+                            }
+                        }
                     }
                 }
             }
@@ -154,17 +166,17 @@ fn extract_items(parsed: &Value) -> Vec<&Value> {
 
         // biome: { diagnostics: [...] }
         if let Some(arr) = obj.get("diagnostics").and_then(|v| v.as_array()) {
-            return arr.iter().collect();
+            return arr.clone();
         }
 
         // phpstan: { errors: [...] }
         if let Some(arr) = obj.get("errors").and_then(|v| v.as_array()) {
-            return arr.iter().collect();
+            return arr.clone();
         }
 
         // golangci-lint: { issues: [...] }
         if let Some(arr) = obj.get("issues").and_then(|v| v.as_array()) {
-            return arr.iter().collect();
+            return arr.clone();
         }
     }
 
@@ -323,6 +335,22 @@ pub async fn run_linters(
         }
     }
 
+    // Cap findings to avoid overwhelming output
+    const MAX_FINDINGS: usize = 50;
+    if findings.len() > MAX_FINDINGS {
+        let total = findings.len();
+        findings.truncate(MAX_FINDINGS);
+        findings.push(LinterFinding {
+            tool: String::new(),
+            file: String::new(),
+            line: None,
+            column: None,
+            severity: "info".to_string(),
+            message: format!("(truncated — {MAX_FINDINGS} of {total} findings shown)"),
+            rule: None,
+        });
+    }
+
     Ok(LinterRunResult {
         findings,
         skipped,
@@ -358,6 +386,7 @@ mod tests {
         let findings = try_parse_json_findings(&tool, json);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].message, "no-unused-vars");
+        assert_eq!(findings[0].file, "/tmp/test.ts");
         assert_eq!(findings[0].line, Some(10));
         assert_eq!(findings[0].rule.as_deref(), Some("no-unused-vars"));
     }

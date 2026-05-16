@@ -10,7 +10,12 @@ Perform a comprehensive devtribunal code review of this repository.
    - `get_repo_outline` once to give the architect a high-level codebase overview
    Pass this context as the `context` parameter when calling review tools below.
 
-3. **Review files**: For each detected language, find all relevant source files and call the matching `review_*` MCP tool on each file. Use these tool names:
+3. **Review files**: For each detected language, find all relevant source files and review them:
+   a. **Read** the file using the Read tool
+   b. **Run linters**: Call the matching `review_*` MCP tool to get linter output and file metadata
+   c. **Apply the Review Instructions** (see below) to produce findings for that file
+
+   Use these tool names for linter analysis:
    - TypeScript/JavaScript: `review_typescript`
    - Python: `review_python`
    - Rust: `review_rust`
@@ -40,3 +45,24 @@ Perform a comprehensive devtribunal code review of this repository.
 8. **Manager action plan**: Call the `manager` orchestrator tool with the architect output, the project docs audit from step 7, and the original specialist findings to produce a prioritized, effort-rated action plan.
 
 9. **Present results**: Show the final action plan to the user, organized by priority and work unit.
+
+## Review Instructions (apply to each file)
+
+For each file you read, produce structured findings using the linter output from the review tool plus your own analysis of the file content:
+
+**[High-Level Summary]** 2-3 sentences on the file's health and purpose.
+
+**[Critical Issues]** Bugs, security vulnerabilities, data loss risks, concurrency hazards. Format each as:
+- **Issue:** description
+- **Location:** file:line or function name
+- **Why:** impact/risk explanation
+- **Fix:** concrete remediation
+
+**[Improvements]** Non-blocking suggestions for better correctness, clarity, or performance. Same format.
+
+Focus on: correctness, security, error handling, concurrency safety, resource leaks.
+Skip: style/formatting issues, naming preferences, minor cosmetic concerns.
+
+If linter findings are provided, reference them where relevant — confirm, expand on, or contextualize what the tools found.
+
+Combine all file findings into a single document before passing to the architect.

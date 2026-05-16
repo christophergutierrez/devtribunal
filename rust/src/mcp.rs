@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+use crate::backend::{self, BackendConfig, Backend};
 use crate::types::{AgentDefinition, AgentRole, load_embedded_agents, load_agents_from_dir, resolve_agents_dir};
 
 /// Shared server state.
@@ -15,24 +16,33 @@ struct ServerState {
     builtin_agents: HashMap<String, AgentDefinition>,
     /// Cache of repo-level agent overrides. Lock must never be held across .await points.
     agent_cache: Mutex<HashMap<PathBuf, HashMap<String, AgentDefinition>>>,
+    /// Backend configuration for LLM processing.
+    backend_config: BackendConfig,
 }
 
 /// Run the MCP server over stdio.
 pub async fn serve_stdio() -> Result<()> {
     let builtin_agents = load_embedded_agents();
+    let backend_config = backend::load_config();
 
     let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
     let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
     eprintln!(
-        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 6 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns)",
+        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 6 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns)\n  backend: {}",
         env!("CARGO_PKG_VERSION"),
         specialist_count,
         orchestrator_count,
+        backend::mode_indicator(&backend_config),
     );
+
+    if let Some(ref warning) = backend_config.fallback_warning {
+        eprintln!("  {warning}");
+    }
 
     let state = ServerState {
         builtin_agents,
         agent_cache: Mutex::new(HashMap::new()),
+        backend_config,
     };
 
     let stdin = BufReader::new(tokio::io::stdin());
@@ -386,7 +396,10 @@ fn resolve_agent(
 ) -> Option<AgentDefinition> {
     // Check for repo-level .devtribunal_agents/
     if let Some(agents_dir) = resolve_agents_dir(file_path, false) {
-        let mut cache = state.agent_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cache = state.agent_cache.lock().unwrap_or_else(|e| {
+            tracing::warn!("agent cache mutex was poisoned, recovering");
+            e.into_inner()
+        });
         let repo_agents = cache.entry(agents_dir.clone()).or_insert_with(|| {
             load_agents_from_dir(&agents_dir).unwrap_or_default()
         });
@@ -422,7 +435,10 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
         };
         let agents = if let Some(repo_path) = &input.repo_path {
             if let Some(agents_dir) = resolve_agents_dir(repo_path, true) {
-                let mut cache = state.agent_cache.lock().unwrap_or_else(|e| e.into_inner());
+                let mut cache = state.agent_cache.lock().unwrap_or_else(|e| {
+                    tracing::warn!("agent cache mutex was poisoned, recovering");
+                    e.into_inner()
+                });
                 cache.entry(agents_dir.clone()).or_insert_with(|| {
                     load_agents_from_dir(&agents_dir).unwrap_or_default()
                 }).clone()
@@ -501,7 +517,41 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             let agent = resolve_agent(name, &input.file_path, state)
                 .unwrap_or_else(|| builtin_agent.clone());
             let result = crate::tools::review::execute_review(&agent, &input.file_path, input.context.as_deref()).await;
-            mcp_result(id, tool_result(&result.content, result.is_error))
+
+            if result.is_error {
+                return mcp_result(id, tool_result(&result.content, true));
+            }
+
+            let indicator = backend::mode_indicator(&state.backend_config);
+
+            match state.backend_config.backend {
+                Backend::Host => {
+                    // Host mode: return the prompt (linter output + instructions) for the host LLM
+                    let content = format!("{indicator}\n\n{}", result.content);
+                    mcp_result(id, tool_result(&content, false))
+                }
+                Backend::Api | Backend::Local => {
+                    // Api/Local mode: send the prompt to the backend and return finished findings
+                    match backend::process_review(&state.backend_config, &result.content).await {
+                        Ok(Some(findings)) => {
+                            let content = format!("{indicator}\n\n{findings}");
+                            mcp_result(id, tool_result(&content, false))
+                        }
+                        Ok(None) => {
+                            // Should not happen for Api/Local, but handle gracefully
+                            let content = format!("{indicator}\n\n{}", result.content);
+                            mcp_result(id, tool_result(&content, false))
+                        }
+                        Err(e) => {
+                            let content = format!(
+                                "{indicator}\n\nERROR: Backend call failed: {e}\n\nFalling back to raw review prompt:\n\n{}",
+                                result.content
+                            );
+                            mcp_result(id, tool_result(&content, true))
+                        }
+                    }
+                }
+            }
         }
     }
 }

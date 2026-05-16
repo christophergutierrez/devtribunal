@@ -347,6 +347,9 @@ async fn query_osv_batch(
             .map_err(|e| format!("OSV API response parse failed: {e}"))?;
 
         for (i, result) in batch.results.iter().enumerate() {
+            if i >= chunk.len() {
+                break;
+            }
             if let Some(vulns) = &result.vulns {
                 let dep = &chunk[i];
                 for vuln in vulns {

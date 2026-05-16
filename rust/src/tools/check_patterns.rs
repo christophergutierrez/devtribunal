@@ -15,6 +15,7 @@ struct FileMetadata {
     exports: Vec<String>,
     error_patterns: Vec<ErrorPattern>,
     string_literals: Vec<(String, u32)>,
+    content: String,
 }
 
 #[derive(Debug, Clone)]
@@ -353,52 +354,75 @@ fn resolve_import(source: &str, current_file: &str, lang: &str, _repo_path: &str
 fn tarjan_scc(adj: &[Vec<usize>]) -> Vec<Vec<usize>> {
     let n = adj.len();
     let mut index_counter = 0u32;
-    let mut stack = Vec::new();
+    let mut scc_stack: Vec<usize> = Vec::new();
     let mut on_stack = vec![false; n];
     let mut index = vec![u32::MAX; n];
     let mut lowlink = vec![0u32; n];
     let mut result = Vec::new();
 
-    #[allow(clippy::too_many_arguments)]
-    fn strongconnect(
+    // Iterative Tarjan's using an explicit call stack to avoid
+    // stack overflow on large graphs (1000+ nodes).
+    struct Frame {
         v: usize,
-        adj: &[Vec<usize>],
-        index_counter: &mut u32,
-        stack: &mut Vec<usize>,
-        on_stack: &mut Vec<bool>,
-        index: &mut Vec<u32>,
-        lowlink: &mut Vec<u32>,
-        result: &mut Vec<Vec<usize>>,
-    ) {
-        index[v] = *index_counter;
-        lowlink[v] = *index_counter;
-        *index_counter += 1;
-        stack.push(v);
-        on_stack[v] = true;
-
-        for &w in &adj[v] {
-            if index[w] == u32::MAX {
-                strongconnect(w, adj, index_counter, stack, on_stack, index, lowlink, result);
-                lowlink[v] = lowlink[v].min(lowlink[w]);
-            } else if on_stack[w] {
-                lowlink[v] = lowlink[v].min(index[w]);
-            }
-        }
-
-        if lowlink[v] == index[v] {
-            let mut scc = Vec::new();
-            while let Some(w) = stack.pop() {
-                on_stack[w] = false;
-                scc.push(w);
-                if w == v { break; }
-            }
-            result.push(scc);
-        }
+        neighbor_idx: usize,
     }
 
-    for v in 0..n {
-        if index[v] == u32::MAX {
-            strongconnect(v, adj, &mut index_counter, &mut stack, &mut on_stack, &mut index, &mut lowlink, &mut result);
+    for start in 0..n {
+        if index[start] != u32::MAX {
+            continue;
+        }
+
+        let mut call_stack: Vec<Frame> = Vec::new();
+
+        // Initialize the start node
+        index[start] = index_counter;
+        lowlink[start] = index_counter;
+        index_counter += 1;
+        scc_stack.push(start);
+        on_stack[start] = true;
+        call_stack.push(Frame { v: start, neighbor_idx: 0 });
+
+        while let Some(frame) = call_stack.last_mut() {
+            let v = frame.v;
+            if frame.neighbor_idx < adj[v].len() {
+                let w = adj[v][frame.neighbor_idx];
+                frame.neighbor_idx += 1;
+
+                if index[w] == u32::MAX {
+                    // "Recurse" into w: initialize it and push a new frame
+                    index[w] = index_counter;
+                    lowlink[w] = index_counter;
+                    index_counter += 1;
+                    scc_stack.push(w);
+                    on_stack[w] = true;
+                    call_stack.push(Frame { v: w, neighbor_idx: 0 });
+                } else if on_stack[w] {
+                    lowlink[v] = lowlink[v].min(index[w]);
+                }
+            } else {
+                // All neighbors processed -- equivalent to returning from recursion
+                let v = frame.v;
+                call_stack.pop();
+
+                // Update parent's lowlink (equivalent to post-recursion update)
+                if let Some(parent_frame) = call_stack.last() {
+                    let parent = parent_frame.v;
+                    lowlink[parent] = lowlink[parent].min(lowlink[v]);
+                }
+
+                // Check if v is the root of an SCC
+                if lowlink[v] == index[v] {
+                    let mut scc = Vec::new();
+                    while let Some(w) = scc_stack.pop() {
+                        on_stack[w] = false;
+                        scc.push(w);
+                        if w == v {
+                            break;
+                        }
+                    }
+                    result.push(scc);
+                }
+            }
         }
     }
 
@@ -418,13 +442,6 @@ fn find_dead_exports(files: &[FileMetadata]) -> Vec<DeadExport> {
         }
     }
 
-    // Also scan all file contents for word-boundary references
-    let all_content: String = files.iter()
-        .map(|f| f.path.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let _ = all_content; // placeholder — we'll use import-based detection
-
     let mut dead = Vec::new();
     for file in files {
         // Skip entry points and test files
@@ -439,6 +456,22 @@ fn find_dead_exports(files: &[FileMetadata]) -> Vec<DeadExport> {
 
         for export in &file.exports {
             if !all_imported.contains(export) {
+                // For Rust files, do a secondary grep-based check.
+                // Rust pub items can be used via path (crate::module::symbol) without
+                // an explicit `use` statement, causing false positives with import-only detection.
+                if file.language == "rust" {
+                    let re = match Regex::new(&format!(r"\b{}\b", regex::escape(export))) {
+                        Ok(r) => r,
+                        Err(_) => continue,
+                    };
+                    let found_elsewhere = files.iter().any(|other| {
+                        other.path != file.path && re.is_match(&other.content)
+                    });
+                    if found_elsewhere {
+                        continue;
+                    }
+                }
+
                 dead.push(DeadExport {
                     file: file.path.clone(),
                     symbol: export.clone(),
@@ -701,6 +734,7 @@ pub async fn execute_check_patterns(repo_path: &str, languages: Option<&[String]
             exports,
             error_patterns,
             string_literals,
+            content,
         });
     }
 
@@ -766,11 +800,13 @@ import express from 'express';
                 path: "src/a.ts".into(), language: "typescript".into(),
                 imports: vec![ImportStatement { source: "./b".into(), symbols: vec!["B".into()] }],
                 exports: vec!["A".into()], error_patterns: Vec::new(), string_literals: Vec::new(),
+                content: String::new(),
             },
             FileMetadata {
                 path: "src/b.ts".into(), language: "typescript".into(),
                 imports: vec![ImportStatement { source: "./a".into(), symbols: vec!["A".into()] }],
                 exports: vec!["B".into()], error_patterns: Vec::new(), string_literals: Vec::new(),
+                content: String::new(),
             },
         ];
         let cycles = detect_cycles(&files, "/tmp/repo");
@@ -786,17 +822,47 @@ import express from 'express';
                 imports: Vec::new(),
                 exports: vec!["usedFunc".into(), "deadFunc".into()],
                 error_patterns: Vec::new(), string_literals: Vec::new(),
+                content: "export function usedFunc() {}\nexport function deadFunc() {}".into(),
             },
             FileMetadata {
                 path: "src/app.ts".into(), language: "typescript".into(),
                 imports: vec![ImportStatement { source: "./utils".into(), symbols: vec!["usedFunc".into()] }],
                 exports: Vec::new(),
                 error_patterns: Vec::new(), string_literals: Vec::new(),
+                content: "import { usedFunc } from './utils';".into(),
             },
         ];
         let dead = find_dead_exports(&files);
         assert!(dead.iter().any(|d| d.symbol == "deadFunc"));
         assert!(!dead.iter().any(|d| d.symbol == "usedFunc"));
+    }
+
+    #[test]
+    fn test_find_dead_exports_rust_path_usage() {
+        // In Rust, a pub symbol can be used via crate::module::symbol without a `use` statement.
+        // The grep-based fallback should prevent false positives in this case.
+        let files = vec![
+            FileMetadata {
+                path: "src/utils.rs".into(), language: "rust".into(),
+                imports: Vec::new(),
+                exports: vec!["helper_func".into(), "truly_dead".into()],
+                error_patterns: Vec::new(), string_literals: Vec::new(),
+                content: "pub fn helper_func() {}\npub fn truly_dead() {}".into(),
+            },
+            FileMetadata {
+                path: "src/app.rs".into(), language: "rust".into(),
+                imports: Vec::new(), // No explicit `use` statement
+                exports: Vec::new(),
+                error_patterns: Vec::new(), string_literals: Vec::new(),
+                // Uses helper_func via path without importing it
+                content: "fn main() {\n    crate::utils::helper_func();\n}".into(),
+            },
+        ];
+        let dead = find_dead_exports(&files);
+        // helper_func is referenced in app.rs via path, so it should NOT be dead
+        assert!(!dead.iter().any(|d| d.symbol == "helper_func"));
+        // truly_dead is not referenced anywhere else, so it IS dead
+        assert!(dead.iter().any(|d| d.symbol == "truly_dead"));
     }
 
     #[test]
@@ -806,16 +872,19 @@ import express from 'express';
                 path: "a.rs".into(), language: "rust".into(),
                 imports: Vec::new(), exports: Vec::new(), error_patterns: Vec::new(),
                 string_literals: vec![("some_magic_string".into(), 1)],
+                content: String::new(),
             },
             FileMetadata {
                 path: "b.rs".into(), language: "rust".into(),
                 imports: Vec::new(), exports: Vec::new(), error_patterns: Vec::new(),
                 string_literals: vec![("some_magic_string".into(), 5)],
+                content: String::new(),
             },
             FileMetadata {
                 path: "c.rs".into(), language: "rust".into(),
                 imports: Vec::new(), exports: Vec::new(), error_patterns: Vec::new(),
                 string_literals: vec![("some_magic_string".into(), 10)],
+                content: String::new(),
             },
         ];
         let dupes = find_duplicated_literals(&files);

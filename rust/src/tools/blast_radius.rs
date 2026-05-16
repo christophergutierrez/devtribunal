@@ -130,14 +130,11 @@ fn symbol_patterns(lang: &str) -> Vec<(&'static str, Regex)> {
     }
 }
 
-fn scan_file_for_references(content: &str, symbols: &[ExtractedSymbol]) -> Vec<String> {
+fn scan_file_for_references(content: &str, symbols: &[ExtractedSymbol], compiled_regexes: &[Regex]) -> Vec<String> {
     let mut found = Vec::new();
-    for sym in symbols {
-        let pattern = format!(r"\b{}\b", regex::escape(&sym.name));
-        if let Ok(re) = Regex::new(&pattern) {
-            if re.is_match(content) {
-                found.push(sym.name.clone());
-            }
+    for (sym, re) in symbols.iter().zip(compiled_regexes.iter()) {
+        if re.is_match(content) {
+            found.push(sym.name.clone());
         }
     }
     found
@@ -316,6 +313,25 @@ async fn execute_with_files(
     let changed_set: HashSet<&str> = changed_files.iter().map(|s| s.as_str()).collect();
 
     if !all_symbols.is_empty() {
+        // Pre-compile all symbol regexes once before scanning files
+        let compiled_regexes: Vec<Regex> = all_symbols
+            .iter()
+            .filter_map(|sym| {
+                let pattern = format!(r"\b{}\b", regex::escape(&sym.name));
+                Regex::new(&pattern).ok()
+            })
+            .collect();
+
+        // If any regex failed to compile, filter symbols to match
+        let (symbols_to_use, regexes_to_use) = if compiled_regexes.len() == all_symbols.len() {
+            (&all_symbols[..], &compiled_regexes[..])
+        } else {
+            // Rebuild with only successfully compiled pairs
+            // This shouldn't happen in practice since symbol names are word chars
+            errors.push("Some symbol regexes failed to compile".to_string());
+            (&all_symbols[..compiled_regexes.len()], &compiled_regexes[..])
+        };
+
         let repo_path_obj = Path::new(repo_path);
         let walker = WalkBuilder::new(repo_path)
             .hidden(true)
@@ -353,7 +369,7 @@ async fn execute_with_files(
                 Err(_) => continue,
             };
 
-            let found = scan_file_for_references(&content, &all_symbols);
+            let found = scan_file_for_references(&content, symbols_to_use, regexes_to_use);
             if !found.is_empty() {
                 dependents.push(DependentFile {
                     path: rel_path,
@@ -453,7 +469,11 @@ mod tests {
             ExtractedSymbol { name: "AgentDefinition".into(), kind: "struct", file: "types.rs".into() },
             ExtractedSymbol { name: "UnusedThing".into(), kind: "struct", file: "types.rs".into() },
         ];
-        let found = scan_file_for_references(content, &symbols);
+        let compiled_regexes: Vec<Regex> = symbols
+            .iter()
+            .map(|sym| Regex::new(&format!(r"\b{}\b", regex::escape(&sym.name))).unwrap())
+            .collect();
+        let found = scan_file_for_references(content, &symbols, &compiled_regexes);
         assert!(found.contains(&"AgentDefinition".to_string()));
         assert!(!found.contains(&"UnusedThing".to_string()));
     }

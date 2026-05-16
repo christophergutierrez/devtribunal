@@ -1,3 +1,4 @@
+mod backend;
 mod lang;
 mod mcp;
 mod runner;
