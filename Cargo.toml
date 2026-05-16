@@ -1,6 +1,6 @@
 [package]
 name = "devtribunal"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 description = "MCP server where each tool is a specialist code review agent"
 license = "MIT"
