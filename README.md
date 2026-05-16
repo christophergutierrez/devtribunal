@@ -70,6 +70,7 @@ Or call tools directly:
 review_typescript({ file_path: "/path/to/file.ts" })
 blast_radius({ repo_path: "/path/to/repo", scope: "staged" })
 check_deps({ repo_path: "/path/to/repo" })
+check_tests({ repo_path: "/path/to/repo", run: true })
 ```
 
 ### CLI commands
@@ -113,13 +114,14 @@ AI assistants call devtribunal's review tools via MCP and get back structured, s
 **1 documentation auditor:**
 - `check_docs` — reviews README, docstrings, and inline comments for accuracy and staleness
 
-**6 management tools:**
+**7 management tools:**
 - `dt_init` — scaffolds agent definitions and skill commands into a target repo
 - `check_tools` — checks which recommended linters are installed
 - `blast_radius` — diff-aware impact analysis: changed symbols + files that depend on them
 - `check_tracking` — git hygiene audit: tracked secrets/artifacts, ignored source files, with fix commands
 - `check_deps` — dependency vulnerability scan via OSV.dev batch API
 - `check_patterns` — cross-file structural analysis: circular deps, dead exports, duplicated literals
+- `check_tests` — test adequacy detection + optional test execution with parsed results
 
 ## Pipeline
 
@@ -158,13 +160,17 @@ The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in seq
 ┌─────────────────────────────────────────────────────────┐
 │  3. STRUCTURAL ANALYSIS  (parallel)                     │
 │                                                         │
-│  ┌────────────────┐ ┌──────────────┐ ┌──────────────┐  │
-│  │ check_tracking │ │  check_deps  │ │check_patterns│  │
-│  │  git hygiene   │ │  vuln scan   │ │ cycles/dead  │  │
-│  └───────┬────────┘ └──────┬───────┘ └──────┬───────┘  │
-│          └─────────────────┼────────────────┘           │
-│                            ▼                            │
-│  Tracking issues, CVEs, structural patterns             │
+│  ┌──────────────┐ ┌────────────┐ ┌──────────────┐      │
+│  │check_tracking│ │ check_deps │ │check_patterns│      │
+│  │ git hygiene  │ │ vuln scan  │ │ cycles/dead  │      │
+│  └──────┬───────┘ └─────┬──────┘ └──────┬───────┘      │
+│         │                │               │              │
+│  ┌──────┴────────────────┴───────────────┴───────┐      │
+│  │              check_tests                      │      │
+│  │  test adequacy + run tests + parse results    │      │
+│  └───────────────────────┬───────────────────────┘      │
+│                           ▼                             │
+│  Tracking issues, CVEs, patterns, test gaps/failures    │
 └────────────────────────────┬────────────────────────────┘
                              │
                              ▼
@@ -200,7 +206,7 @@ The host LLM (Claude Code) orchestrates the pipeline by calling MCP tools in seq
 └─────────────────────────────────────────────────────────┘
 ```
 
-Each stage is an independent MCP tool call. The server is stateless — it builds prompts from agent definitions and passes them back to the host LLM, which generates the review content.
+Each stage is an independent MCP tool call. In host mode (default), the server returns linter output and metadata — the host LLM generates the review content using shared instructions from the skill template. In API or local mode, the server processes reviews internally and returns finished findings.
 
 ## Customization
 
@@ -247,12 +253,13 @@ Orchestrators use the same format with `role: orchestrator` and a `## Output For
 rust/src/
   main.rs             # CLI (clap) + entry point
   mcp.rs              # JSON-RPC 2.0 stdio server
+  backend.rs          # Multi-backend LLM support (host/api/local)
   types.rs            # Structs, agent parsing, embedded assets
   lang.rs             # Shared language detection utilities
   runner.rs           # Package runner alternatives (bunx/pnpx/npx)
   shell.rs            # Safe process execution, path validation
   tools/
-    review.rs         # Specialist review prompt builder
+    review.rs         # Specialist review: runs linters, returns metadata
     orchestrate.rs    # Orchestrator prompt builder
     linter.rs         # Linter execution (parallel, multi-format JSON parsing)
     init.rs           # dt_init scaffolding + gitignore management
@@ -261,6 +268,7 @@ rust/src/
     check_tracking.rs # Git hygiene audit (secrets, artifacts, ignored source)
     check_deps.rs     # Dependency vulnerability scan (OSV.dev)
     check_patterns.rs # Cross-file patterns (cycles, dead exports, duplicates)
+    check_tests.rs    # Test adequacy detection + execution
 
 agents/               # 16 agent definitions (embedded at compile time)
 templates/skills/     # 4 skill templates (embedded at compile time)
@@ -270,7 +278,29 @@ Key design decisions:
 - **Single binary** — all agents and templates embedded via `include_str!` at compile time
 - **Agents are tools, not personas** — structured Markdown output, not chat
 - **Config-driven** — agent definitions are markdown with YAML frontmatter
-- **Host-delegated LLM** — tools return prompts, the host does the review
-- **Best-effort linters** — linter failures are silently caught, review continues
+- **Multi-backend** — host mode (default, host LLM reviews), API mode (Anthropic), or local mode (OpenAI-compatible endpoint)
+- **Slim tool results** — review tools return only linter output + metadata; skill templates provide review instructions once
+- **Best-effort linters** — linter failures are logged via `tracing::warn` and review continues
 - **Zero trace** — `dt_init` gitignores scaffolded files by default
 - **Repo overrides** — `.devtribunal_agents/` in a repo overrides built-in agents (orchestrators require `repo_path` in tool call)
+
+## Configuration
+
+Set environment variables to control the review backend:
+
+```sh
+# Default: host LLM processes reviews (no extra cost beyond your Claude session)
+DEVTRIBUNAL_BACKEND=host
+
+# Anthropic API: devtribunal calls Claude directly, returns finished findings
+DEVTRIBUNAL_BACKEND=api
+DEVTRIBUNAL_API_KEY=sk-ant-...
+DEVTRIBUNAL_MODEL=claude-sonnet-4-20250514  # optional, defaults to claude-sonnet-4-20250514
+
+# Local model: devtribunal calls an OpenAI-compatible endpoint
+DEVTRIBUNAL_BACKEND=local
+DEVTRIBUNAL_LOCAL_URL=http://localhost:11434/v1
+DEVTRIBUNAL_LOCAL_MODEL=qwen3:32b
+```
+
+Every review result is prefixed with the active mode so you always know what's processing your code.
