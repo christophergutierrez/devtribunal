@@ -70,11 +70,34 @@ pub async fn safe_exec(
     args: &[String],
     timeout: Duration,
 ) -> ExecResult {
-    let mut child = match Command::new(bin)
-        .args(args)
+    exec_impl(bin, args, None, timeout).await
+}
+
+/// Like `safe_exec`, but runs the child process with `cwd` as its working directory.
+/// Used by tools that must execute inside a target repo (e.g. run_tests).
+pub async fn safe_exec_in_dir(
+    bin: &str,
+    args: &[String],
+    cwd: &std::path::Path,
+    timeout: Duration,
+) -> ExecResult {
+    exec_impl(bin, args, Some(cwd), timeout).await
+}
+
+async fn exec_impl(
+    bin: &str,
+    args: &[String],
+    cwd: Option<&std::path::Path>,
+    timeout: Duration,
+) -> ExecResult {
+    let mut cmd = Command::new(bin);
+    cmd.args(args)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    let mut child = match cmd.spawn()
     {
         Ok(child) => child,
         Err(e) => {
