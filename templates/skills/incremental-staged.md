@@ -38,6 +38,9 @@ If no files are found, inform the user there are no staged changes to review.
    - Lua (.lua): `review_lua`
    - SQL (.sql): `review_sql`
    - Protobuf (.proto): `review_protobuf`
+   - C++ (.cpp, .cc, .cxx, .hpp, .hxx): `review_cpp`
+   - Shell (.sh, .bash): `review_shell`
+   - Frontend (.html, .css, .scss, .less): `review_frontend`
 
    Run reviews in parallel where possible. Pass absolute file paths.
 

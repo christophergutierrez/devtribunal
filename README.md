@@ -105,6 +105,9 @@ AI assistants call devtribunal's review tools via MCP and get back structured, s
 | `review_lua` | Lua | luacheck, selene |
 | `review_sql` | SQL | sqlfluff |
 | `review_protobuf` | Protocol Buffers | buf lint, buf breaking |
+| `review_cpp` | C++ | clang-tidy, cppcheck |
+| `review_shell` | Shell (bash/sh) | shellcheck, shfmt |
+| `review_frontend` | HTML, CSS, SCSS, Less | htmlhint, stylelint |
 
 **3 orchestrator agents:**
 - `architect` — synthesizes specialist findings into cross-cutting concerns

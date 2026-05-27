@@ -15,10 +15,22 @@ pub const EXTENSION_TO_LANGUAGE: &[(&str, &str)] = &[
     (".lua", "lua"),
     (".sql", "sql"),
     (".proto", "protobuf"),
+    (".sh", "shell"),
+    (".bash", "shell"),
+    (".cpp", "cpp"),
+    (".cc", "cpp"),
+    (".cxx", "cpp"),
+    (".hpp", "cpp"),
+    (".hxx", "cpp"),
+    (".html", "frontend"),
+    (".css", "frontend"),
+    (".scss", "frontend"),
+    (".less", "frontend"),
 ];
 
 pub const SOURCE_EXTENSIONS: &[&str] = &[
     "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "php", "cs", "c", "h", "dart", "lua",
+    "sh", "bash", "cpp", "cc", "cxx", "hpp", "hxx", "html", "css", "scss", "less",
 ];
 
 pub const SKIP_DIRS: &[&str] = &[
@@ -117,6 +129,23 @@ mod tests {
         assert_eq!(language_for_path("lib/utils.ts"), Some("typescript"));
         assert_eq!(language_for_path("app.py"), Some("python"));
         assert_eq!(language_for_path("README.md"), None);
+    }
+
+    #[test]
+    fn test_new_extension_mappings() {
+        assert_eq!(language_for_path("deploy.sh"), Some("shell"));
+        assert_eq!(language_for_path("setup.bash"), Some("shell"));
+        assert_eq!(language_for_path("src/widget.cpp"), Some("cpp"));
+        assert_eq!(language_for_path("src/widget.hpp"), Some("cpp"));
+        assert_eq!(language_for_path("a.cc"), Some("cpp"));
+        assert_eq!(language_for_path("index.html"), Some("frontend"));
+        assert_eq!(language_for_path("styles/main.scss"), Some("frontend"));
+        // .h stays C (NOT cpp)
+        assert_eq!(language_for_path("include/foo.h"), Some("c"));
+        // new extensions are walked
+        assert!(is_source_file("deploy.sh"));
+        assert!(is_source_file("widget.cpp"));
+        assert!(is_source_file("index.html"));
     }
 
     #[test]

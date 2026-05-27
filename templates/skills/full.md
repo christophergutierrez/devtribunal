@@ -28,6 +28,9 @@ Perform a comprehensive devtribunal code review of this repository.
    - Lua: `review_lua`
    - SQL: `review_sql`
    - Protobuf: `review_protobuf`
+   - C++: `review_cpp`
+   - Shell (bash/sh): `review_shell`
+   - Frontend (HTML/CSS): `review_frontend`
 
    Run reviews in parallel where possible. Pass absolute file paths. If $ARGUMENTS is provided, scope the review to those files or directories instead of the full repo.
 
