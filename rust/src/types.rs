@@ -230,6 +230,7 @@ pub const EMBEDDED_AGENTS: &[(&str, &str)] = &[
     ("check_project_docs.md", include_str!("../../agents/check_project_docs.md")),
     ("manager.md", include_str!("../../agents/manager.md")),
     ("review_c.md", include_str!("../../agents/review_c.md")),
+    ("review_config.md", include_str!("../../agents/review_config.md")),
     ("review_cpp.md", include_str!("../../agents/review_cpp.md")),
     ("review_csharp.md", include_str!("../../agents/review_csharp.md")),
     ("review_dart.md", include_str!("../../agents/review_dart.md")),
@@ -237,12 +238,14 @@ pub const EMBEDDED_AGENTS: &[(&str, &str)] = &[
     ("review_go.md", include_str!("../../agents/review_go.md")),
     ("review_java.md", include_str!("../../agents/review_java.md")),
     ("review_lua.md", include_str!("../../agents/review_lua.md")),
+    ("review_migrations.md", include_str!("../../agents/review_migrations.md")),
     ("review_php.md", include_str!("../../agents/review_php.md")),
     ("review_protobuf.md", include_str!("../../agents/review_protobuf.md")),
     ("review_python.md", include_str!("../../agents/review_python.md")),
     ("review_rust.md", include_str!("../../agents/review_rust.md")),
     ("review_shell.md", include_str!("../../agents/review_shell.md")),
     ("review_sql.md", include_str!("../../agents/review_sql.md")),
+    ("review_tests.md", include_str!("../../agents/review_tests.md")),
     ("review_typescript.md", include_str!("../../agents/review_typescript.md")),
 ];
 
@@ -344,7 +347,7 @@ Format output.
     #[test]
     fn test_load_embedded_agents() {
         let agents = load_embedded_agents();
-        assert!(agents.len() >= 19, "Expected at least 19 embedded agents, got {}", agents.len());
+        assert!(agents.len() >= 22, "Expected at least 22 embedded agents, got {}", agents.len());
         assert!(agents.contains_key("review_typescript"));
         assert!(agents.contains_key("architect"));
         assert!(agents.contains_key("manager"));

@@ -32,6 +32,11 @@ Perform a comprehensive devtribunal code review of this repository.
    - Shell (bash/sh): `review_shell`
    - Frontend (HTML/CSS): `review_frontend`
 
+   Overlay specialists (run IN ADDITION to any language specialist for the same file):
+   - Tests (`*_test.*`, `*.test.*`, `*.spec.*`, files under `tests/`): `review_tests`
+   - Migrations (`.sql` under `migrations/` or `db/migrate/`): `review_migrations`
+   - Config (`Dockerfile`, `.tf`/`.tfvars`, `.github/workflows/*.yml`, docker-compose): `review_config`
+
    Run reviews in parallel where possible. Pass absolute file paths. If $ARGUMENTS is provided, scope the review to those files or directories instead of the full repo.
 
 4. **Check file-level documentation**: Call `check_docs` on source files with significant doc comments, docstrings, or inline documentation.

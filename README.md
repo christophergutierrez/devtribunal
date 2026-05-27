@@ -108,6 +108,9 @@ AI assistants call devtribunal's review tools via MCP and get back structured, s
 | `review_cpp` | C++ | clang-tidy, cppcheck |
 | `review_shell` | Shell (bash/sh) | shellcheck, shfmt |
 | `review_frontend` | HTML, CSS, SCSS, Less | htmlhint, stylelint |
+| `review_migrations` | DB migrations (overlay) | — |
+| `review_tests` | Test files (overlay) | — |
+| `review_config` | Dockerfile, CI, Terraform (overlay) | hadolint, actionlint, tflint |
 
 **3 orchestrator agents:**
 - `architect` — synthesizes specialist findings into cross-cutting concerns
