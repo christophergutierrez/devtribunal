@@ -109,6 +109,15 @@ If there are no improvements, write `None`.
 - RegExp without proper escaping of user input
 - parseInt without radix parameter
 
+### Security
+- Hardcoded secrets, API keys, or tokens in source (repo-wide scanning is handled by `check_secrets`)
+- Injection: unsanitized input in SQL queries, `child_process` calls, or `eval`/`new Function`
+- XSS via `dangerouslySetInnerHTML`, unescaped template output, or untrusted DOM insertion
+- SSRF: server-side `fetch`/HTTP requests built from user-controlled URLs without allowlisting
+- Path traversal in filesystem APIs constructed from request input
+- Unsafe deserialization / prototype pollution from untrusted JSON or recursive object merges
+- Missing input validation at trust boundaries (request handlers, message consumers)
+
 ## Structured Findings
 
 In addition to the prose review above, emit exactly one fenced `json` code block in this shape so the review can be tracked deterministically across passes:
