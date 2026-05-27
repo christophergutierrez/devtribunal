@@ -129,3 +129,31 @@ If there are no improvements, write `None`.
 - Insecure deserialization (`BinaryFormatter`, `Newtonsoft` with `TypeNameHandling.All`)
 - Path traversal via unsanitized user input in `Path.Combine` or file operations
 - Secrets or connection strings hardcoded instead of using configuration/key vault
+
+## Structured Findings
+
+In addition to the prose review above, emit exactly one fenced `json` code block in this shape so the review can be tracked deterministically across passes:
+
+```json
+{
+  "findings": [
+    {
+      "severity": "critical | high | medium | low",
+      "confidence": "confirmed | likely | possible",
+      "category": "<one value from this agent's severity_focus>",
+      "file": "<repo-relative path>",
+      "line": 123,
+      "title": "<= 80 char stable one-line summary, no line numbers",
+      "description": "why it matters",
+      "suggested_fix": "optional; omit or null when not applicable"
+    }
+  ]
+}
+```
+
+Rules:
+- One object per concrete finding. If there are none, emit `{ "findings": [] }`.
+- Do NOT invent an `id` — it is assigned downstream from `file` + `category` + `title`.
+- Omit `line` (or use `null`) when the finding is not line-specific.
+- Keep `title` stable and free of line numbers so the same issue matches across passes.
+- Draw `category` from this agent's `severity_focus`.

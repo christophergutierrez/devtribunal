@@ -1,4 +1,5 @@
 mod backend;
+mod findings;
 mod lang;
 mod mcp;
 mod runner;
