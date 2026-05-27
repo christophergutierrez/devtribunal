@@ -42,6 +42,11 @@ If no files are found, inform the user there are no unpushed changes to review.
    - Shell (.sh, .bash): `review_shell`
    - Frontend (.html, .css, .scss, .less): `review_frontend`
 
+   Overlay specialists (run IN ADDITION to any language specialist for the same file):
+   - Tests (`*_test.*`, `*.test.*`, `*.spec.*`, under `tests/`): `review_tests`
+   - Migrations (`.sql` under `migrations/` or `db/migrate/`): `review_migrations`
+   - Config (`Dockerfile`, `.tf`/`.tfvars`, `.github/workflows/*.yml`, docker-compose): `review_config`
+
    Run reviews in parallel where possible. Pass absolute file paths.
 
 4. **Blast radius**: Call `blast_radius` with `repo_path` and `scope: "unpushed"` to identify which other files depend on the changed symbols. Include dependent files as context for the architect.
