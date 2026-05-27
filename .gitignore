@@ -6,5 +6,7 @@ target/
 
 # Project tooling
 .paul/
+tmp/
 .devtribunal_agents/
 .claude/commands/dt/
+.fastembed_cache/
