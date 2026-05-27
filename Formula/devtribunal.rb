@@ -1,26 +1,26 @@
 class Devtribunal < Formula
   desc "MCP server where each tool is a specialist code review agent"
   homepage "https://github.com/christophergutierrez/devtribunal"
-  version "0.8.0"
+  version "0.9.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.8.0/devtribunal-aarch64-apple-darwin.tar.gz"
-      sha256 "34f11b87e824c070e4e39c029691fcb688c60d15540c52acf0425f31513384ec"
+      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.9.0/devtribunal-aarch64-apple-darwin.tar.gz"
+      sha256 "f5164a59f7ca3b8a21ddc144f1e858e93aa450062b4472e6078df01ea0ca3a2f"
     elsif Hardware::CPU.intel?
-      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.8.0/devtribunal-x86_64-apple-darwin.tar.gz"
-      sha256 "2f469e68599ea9f14ea2ac9dc64762e1d12cfc93f4cfb2e2ccdef85befde9a64"
+      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.9.0/devtribunal-x86_64-apple-darwin.tar.gz"
+      sha256 "158a70800494a04b969429effd5c745520af506e29dad282cd69a11e7fb97e57"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.8.0/devtribunal-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "07c2f937bd5bcbda067cf9c0732be77d194a12f31054be0c7b33b88263a2b95f"
+      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.9.0/devtribunal-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "b39d87cf0acf93a789008e30abaa15f5e8da629e80ef85ed2fa24f6faed1cab3"
     elsif Hardware::CPU.intel?
-      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.8.0/devtribunal-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "8de429d5ccd42d5d1e1d0d89e553815ad7f7df5d93cda52a8c6a6c49613098d4"
+      url "https://github.com/christophergutierrez/devtribunal/releases/download/v0.9.0/devtribunal-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "b794fda07f8f69b53289a2fb19debf2849cf029872c1153ea3ed9c636703bdf3"
     end
   end
 
