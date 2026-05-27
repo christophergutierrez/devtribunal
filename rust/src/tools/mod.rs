@@ -7,6 +7,7 @@ pub mod init;
 pub mod linter;
 pub mod orchestrate;
 pub mod review;
+pub mod run_tests;
 
 pub struct ToolResult {
     pub content: String,
