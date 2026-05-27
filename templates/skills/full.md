@@ -45,6 +45,7 @@ Perform a comprehensive devtribunal code review of this repository.
    - `check_tracking` with `repo_path` — git hygiene audit (tracked secrets, ignored source)
    - `check_deps` with `repo_path` — dependency vulnerability scan via OSV.dev
    - `check_patterns` with `repo_path` — cross-file patterns (cycles, dead exports, duplicated literals)
+   - `check_tests` with `repo_path` and `run: true` — test adequacy analysis and test execution
 
 6. **Architect synthesis**: Collect all Markdown findings from steps 3, 4, and 5 into a single string. Call the `architect` orchestrator tool with these combined findings to identify cross-cutting concerns and systemic patterns. If repomap context was gathered in step 2, include the repo outline as additional context.
 

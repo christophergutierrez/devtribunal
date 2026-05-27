@@ -51,13 +51,15 @@ If no files are found, inform the user there are no staged changes to review.
 
 4. **Blast radius**: Call `blast_radius` with `repo_path` and `scope: "staged"` to identify which other files depend on the changed symbols. Include dependent files as context for the architect.
 
-5. **Check documentation**: If any README or documentation files are in the staged list, call `check_docs` on them.
+5. **Test adequacy & execution**: Call `check_tests` with `repo_path` and `run: true` to detect test gaps and execute the project's test suite. If tests fail on changed code, this is critical information for the review.
 
-6. **Architect synthesis**: Collect all findings (reviews + blast radius) as a combined string. Call `architect` with these combined findings. If repomap context was gathered in step 2, include it as additional context.
+6. **Check documentation**: If any README or documentation files are in the staged list, call `check_docs` on them.
 
-7. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized action plan.
+7. **Architect synthesis**: Collect all findings (reviews + blast radius + test results) as a combined string. Call `architect` with these combined findings. If repomap context was gathered in step 2, include it as additional context.
 
-8. **Present results**: Show the final action plan, noting this review covers staged changes and their blast radius.
+8. **Manager action plan**: Call `manager` with the architect output and findings to produce a prioritized action plan.
+
+9. **Present results**: Show the final action plan, noting this review covers staged changes and their blast radius.
 
 ## Review Instructions (apply to each file)
 
