@@ -119,6 +119,15 @@ If there are no improvements, write `None`.
 - Collecting into a `Vec` only to iterate again immediately
 - Large types on the stack that should be boxed to avoid stack overflow
 
+### Security
+- Hardcoded secrets or credentials in source (repo-wide scanning is handled by `check_secrets`)
+- Injection: building SQL or shell commands (`std::process::Command` via a shell) from untrusted input
+- Path traversal when constructing filesystem paths from external input
+- Unsafe deserialization of untrusted data into types with surprising side effects
+- `unsafe` blocks that can violate memory-safety invariants under attacker-controlled input
+- Integer overflow in size/index math on untrusted input (prefer checked/saturating arithmetic)
+- Missing validation at trust boundaries (handlers, parsers, FFI)
+
 ## Structured Findings
 
 In addition to the prose review above, emit exactly one fenced `json` code block in this shape so the review can be tracked deterministically across passes:

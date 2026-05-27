@@ -28,7 +28,7 @@ pub async fn serve_stdio() -> Result<()> {
     let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
     let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
     eprintln!(
-        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 7 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, run_tests)\n  backend: {}",
+        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 8 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, run_tests, check_secrets)\n  backend: {}",
         env!("CARGO_PKG_VERSION"),
         specialist_count,
         orchestrator_count,
@@ -276,6 +276,19 @@ fn run_tests_input_schema() -> Value {
     })
 }
 
+fn check_secrets_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "repo_path": {
+                "type": "string",
+                "description": "Absolute path to the repository to scan for secrets"
+            }
+        },
+        "required": ["repo_path"]
+    })
+}
+
 fn handle_list_tools(id: &Value, state: &ServerState) -> Value {
     let mut tools = Vec::new();
 
@@ -341,6 +354,12 @@ fn handle_list_tools(id: &Value, state: &ServerState) -> Value {
         "inputSchema": run_tests_input_schema()
     }));
 
+    tools.push(json!({
+        "name": "check_secrets",
+        "description": "Repo-wide secret scan via gitleaks; reports leak locations/rules (values redacted)",
+        "inputSchema": check_secrets_input_schema()
+    }));
+
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -401,6 +420,11 @@ struct RunTestsInput {
     repo_path: String,
     test_command: Option<String>,
     timeout_secs: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct CheckSecretsInput {
+    repo_path: String,
 }
 
 fn tool_result(text: &str, is_error: bool) -> Value {
@@ -533,6 +557,15 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             input.timeout_secs,
         )
         .await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
+    if name == "check_secrets" {
+        let input: CheckSecretsInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let result = crate::tools::check_secrets::execute_check_secrets(&input.repo_path).await;
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
