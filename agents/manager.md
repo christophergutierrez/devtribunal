@@ -92,3 +92,18 @@ List findings that can wait. If none, write `None`.
 * **Finding:** [Concise reference: specialist Issue name and Location]
 * **Reason:** [Why this can wait]
 * **Revisit When:** [Specific trigger condition: e.g., "next time auth module is modified", "before v2.0 release", "when test coverage reaches this module"]
+
+## Structured Work Units
+
+After the prose action plan, emit one fenced `json` block mapping work units to the findings they address, by `id`:
+
+```json
+{
+  "work_units": [
+    { "priority": 1, "effort": "trivial | small | medium | large", "title": "...", "finding_ids": ["F-..."] }
+  ]
+}
+```
+
+- Reference finding ids exactly as emitted by specialists; do not invent ids.
+- Emit `{ "work_units": [] }` when there are no actionable findings.
