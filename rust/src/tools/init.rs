@@ -120,44 +120,125 @@ fn ensure_mcp_json(repo_path: &Path) -> Option<String> {
     Some(".mcp.json".to_string())
 }
 
-fn scaffold_skills(repo_path: &Path) -> (Vec<String>, usize, usize) {
+// --- Managed-file provenance ---
+//
+// Scaffolded skills carry a trailing marker recording a hash of the content
+// devtribunal wrote. On re-init this lets us tell a *pristine* file (untouched
+// since we wrote it — safe to refresh) from one the user *edited* (leave alone).
+
+const MANAGED_MARKER_PREFIX: &str = "<!-- dt:managed fnv=";
+const MANAGED_MARKER_SUFFIX: &str = " -->";
+
+fn content_fnv_hex(s: &str) -> String {
+    // FNV-1a-64 — stable across releases (unlike std DefaultHasher); used only to
+    // detect edits, not for any security property.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Canonical body + provenance marker, exactly as written to disk.
+fn stamp_managed(content: &str) -> String {
+    let body = content.trim_end();
+    format!(
+        "{body}\n{MANAGED_MARKER_PREFIX}{}{MANAGED_MARKER_SUFFIX}\n",
+        content_fnv_hex(body)
+    )
+}
+
+enum ManagedState {
+    /// devtribunal wrote it and it is untouched; carries the recovered body.
+    Pristine(String),
+    /// Our marker is present but the body was edited since.
+    UserEdited,
+    /// No marker — hand-created or written before managed markers existed.
+    Unmanaged,
+}
+
+fn classify_managed(on_disk: &str) -> ManagedState {
+    let trimmed = on_disk.trim_end();
+    if let Some((body, last_line)) = trimmed.rsplit_once('\n') {
+        if let Some(rest) = last_line.strip_prefix(MANAGED_MARKER_PREFIX) {
+            if let Some(stored) = rest.strip_suffix(MANAGED_MARKER_SUFFIX) {
+                let body = body.trim_end();
+                return if content_fnv_hex(body) == stored {
+                    ManagedState::Pristine(body.to_string())
+                } else {
+                    ManagedState::UserEdited
+                };
+            }
+        }
+    }
+    ManagedState::Unmanaged
+}
+
+#[derive(Default)]
+struct SkillScaffold {
+    results: Vec<String>,
+    written: usize,
+    updated: usize,
+    skipped: usize,
+    /// Files left untouched because the user edited them (had our marker, changed).
+    user_edited: Vec<String>,
+    /// Files left untouched because they carry no managed marker.
+    unmanaged: Vec<String>,
+}
+
+fn scaffold_skills(repo_path: &Path) -> SkillScaffold {
     let target_dir = repo_path.join(".claude").join("commands").join("dt");
-    let mut results = Vec::new();
-    let mut written = 0;
-    let mut skipped = 0;
+    let mut out = SkillScaffold::default();
 
     if let Err(e) = std::fs::create_dir_all(&target_dir) {
         tracing::warn!("failed to create skills directory {}: {e}", target_dir.display());
-        return (vec!["  Failed to create skills directory".to_string()], 0, 0);
+        out.results.push("  Failed to create skills directory".to_string());
+        return out;
     }
 
     for &(filename, content) in embedded_skills() {
         let target_path = target_dir.join(filename);
+        let canonical = content.trim_end();
 
         if target_path.exists() {
             let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
-            if existing.trim() == content.trim() {
-                results.push(format!("  SKIPPED {filename} (already current)"));
-                skipped += 1;
-                continue;
+            match classify_managed(&existing) {
+                ManagedState::Pristine(body) if body == canonical => {
+                    out.results.push(format!("  SKIPPED {filename} (already current)"));
+                    out.skipped += 1;
+                }
+                ManagedState::Pristine(_) => match std::fs::write(&target_path, stamp_managed(content)) {
+                    Ok(_) => {
+                        out.results.push(format!("  UPDATED {filename} (refreshed — was an older devtribunal version)"));
+                        out.updated += 1;
+                    }
+                    Err(e) => out.results.push(format!("  ERROR   {filename}: {e}")),
+                },
+                ManagedState::UserEdited => {
+                    out.results.push(format!("  SKIPPED {filename} (user-edited — left as is)"));
+                    out.skipped += 1;
+                    out.user_edited.push(filename.to_string());
+                }
+                ManagedState::Unmanaged => {
+                    out.results.push(format!("  SKIPPED {filename} (no managed marker — left as is)"));
+                    out.skipped += 1;
+                    out.unmanaged.push(filename.to_string());
+                }
             }
-            results.push(format!("  SKIPPED {filename} (modified by user — won't overwrite)"));
-            skipped += 1;
             continue;
         }
 
-        match std::fs::write(&target_path, content) {
+        match std::fs::write(&target_path, stamp_managed(content)) {
             Ok(_) => {
-                results.push(format!("  WROTE   {filename}"));
-                written += 1;
+                out.results.push(format!("  WROTE   {filename}"));
+                out.written += 1;
             }
-            Err(e) => {
-                results.push(format!("  ERROR   {filename}: {e}"));
-            }
+            Err(e) => out.results.push(format!("  ERROR   {filename}: {e}")),
         }
     }
 
-    (results, written, skipped)
+    out
 }
 
 pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult {
@@ -258,13 +339,13 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
     }
 
     // Scaffold skills
-    let (skill_results, skill_written, skill_skipped) = scaffold_skills(repo);
+    let skills = scaffold_skills(repo);
 
     // Ensure .mcp.json has devtribunal entry
     let mcp_json_added = ensure_mcp_json(repo);
 
     // Update .gitignore if anything was written
-    let total_written = written + skill_written;
+    let total_written = written + skills.written;
     let mut gitignore_added = Vec::new();
     if total_written > 0 {
         gitignore_added = ensure_gitignore(repo, GITIGNORE_ENTRIES);
@@ -285,8 +366,38 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
         "## Skills → {}",
         repo.join(".claude").join("commands").join("dt").display()
     ));
-    summary.extend(skill_results);
-    summary.push(format!("{skill_written} written, {skill_skipped} skipped"));
+    summary.extend(skills.results);
+    summary.push(format!(
+        "{} written, {} updated, {} skipped",
+        skills.written, skills.updated, skills.skipped
+    ));
+
+    if !skills.user_edited.is_empty() || !skills.unmanaged.is_empty() {
+        summary.push(String::new());
+        summary.push("## ⚠ Skills left untouched (NOT refreshed)".to_string());
+        if !skills.user_edited.is_empty() {
+            summary.push(
+                "  You customized these, so they were not overwritten. The current devtribunal \
+                 templates may have changed — possibly with breaking format changes. Review the \
+                 latest template and merge your edits manually:"
+                    .to_string(),
+            );
+            for f in &skills.user_edited {
+                summary.push(format!("    - {f}"));
+            }
+        }
+        if !skills.unmanaged.is_empty() {
+            summary.push(
+                "  These carry no devtribunal marker (older version or hand-created), so they were \
+                 not overwritten. If you have NOT customized them, delete them and re-run dt_init \
+                 to adopt the latest version and enable auto-updates:"
+                    .to_string(),
+            );
+            for f in &skills.unmanaged {
+                summary.push(format!("    - {f}"));
+            }
+        }
+    }
 
     if mcp_json_added.is_some() {
         summary.push(String::new());
@@ -329,5 +440,70 @@ mod tests {
         // separate from .devtribunal_agents/ (config).
         assert!(GITIGNORE_ENTRIES.contains(&".devtribunal/"));
         assert!(GITIGNORE_ENTRIES.contains(&".devtribunal_agents/"));
+    }
+
+    #[test]
+    fn stamp_then_classify_is_pristine() {
+        let tpl = "# Skill\n\nbody line\n";
+        let on_disk = stamp_managed(tpl);
+        match classify_managed(&on_disk) {
+            ManagedState::Pristine(body) => assert_eq!(body, tpl.trim_end()),
+            _ => panic!("freshly stamped content must classify as Pristine"),
+        }
+    }
+
+    #[test]
+    fn edited_body_classifies_as_user_edited() {
+        let on_disk = stamp_managed("original body\n");
+        let edited = on_disk.replace("original body", "user changed this");
+        assert!(matches!(classify_managed(&edited), ManagedState::UserEdited));
+    }
+
+    #[test]
+    fn no_marker_classifies_as_unmanaged() {
+        assert!(matches!(classify_managed("just a file\nno marker\n"), ManagedState::Unmanaged));
+    }
+
+    #[test]
+    fn scaffold_writes_then_refreshes_pristine_and_preserves_edits() {
+        let dir = std::env::temp_dir().join(format!("dt_init_skills_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // First scaffold: all files written.
+        let first = scaffold_skills(&dir);
+        assert!(first.written > 0);
+        assert_eq!(first.skipped, 0);
+
+        // Re-run: everything pristine + current → all skipped, nothing flagged.
+        let second = scaffold_skills(&dir);
+        assert_eq!(second.written, 0);
+        assert!(second.user_edited.is_empty());
+        assert!(second.unmanaged.is_empty());
+        assert_eq!(second.skipped, embedded_skills().len());
+
+        // Edit one managed file → it is preserved and reported as user-edited.
+        let skill_dir = dir.join(".claude").join("commands").join("dt");
+        let (first_name, _) = embedded_skills()[0];
+        let path = skill_dir.join(first_name);
+        let edited = std::fs::read_to_string(&path).unwrap().replace("devtribunal", "MYCUSTOM");
+        std::fs::write(&path, &edited).unwrap();
+        let third = scaffold_skills(&dir);
+        assert!(third.user_edited.contains(&first_name.to_string()));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), edited, "user-edited file must not be overwritten");
+
+        // A pristine-but-outdated file → refreshed (UPDATED), not flagged.
+        let (second_name, second_content) = embedded_skills()[1];
+        let stale = stamp_managed("# stale old template\n\nold body\n");
+        std::fs::write(skill_dir.join(second_name), &stale).unwrap();
+        let fourth = scaffold_skills(&dir);
+        assert!(fourth.updated >= 1);
+        assert_eq!(
+            std::fs::read_to_string(skill_dir.join(second_name)).unwrap(),
+            stamp_managed(second_content),
+            "pristine outdated file must be refreshed to the current template"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
