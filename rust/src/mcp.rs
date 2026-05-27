@@ -24,14 +24,28 @@ struct ServerState {
 pub async fn serve_stdio() -> Result<()> {
     let builtin_agents = load_embedded_agents();
     let backend_config = backend::load_config();
+    let management_tools = [
+        "dt_init",
+        "check_tools",
+        "blast_radius",
+        "check_tracking",
+        "check_deps",
+        "check_patterns",
+        "check_tests",
+        "run_tests",
+        "check_secrets",
+        "diff_findings",
+    ];
 
     let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
     let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
     eprintln!(
-        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 10 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, check_tests, run_tests, check_secrets, diff_findings)\n  backend: {}",
+        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + {} management tools ({})\n  backend: {}",
         env!("CARGO_PKG_VERSION"),
         specialist_count,
         orchestrator_count,
+        management_tools.len(),
+        management_tools.join(", "),
         backend::mode_indicator(&backend_config),
     );
 
