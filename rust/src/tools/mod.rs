@@ -5,6 +5,7 @@ pub mod check_secrets;
 pub mod check_tests;
 pub mod check_tools;
 pub mod check_tracking;
+pub mod diff_findings;
 pub mod init;
 pub mod linter;
 pub mod orchestrate;

@@ -92,3 +92,19 @@ List findings that should be re-evaluated. If none, write `None`.
 * **Original Finding:** [Concise reference: specialist Issue name and Location]
 * **Action:** escalate | downgrade | dismiss
 * **Reason:** [Specific architectural context that changes the severity — reference the critical path, upstream guard, or interacting finding]
+
+## Structured Overrides
+
+After the prose synthesis, emit one fenced `json` block listing any specialist findings you are overriding, referenced by their `id` from the specialists' Structured Findings:
+
+```json
+{
+  "overrides": [
+    { "finding_id": "F-...", "action": "escalate | downgrade | dismiss", "new_severity": "critical | high | medium | low", "reason": "..." }
+  ]
+}
+```
+
+- Use `finding_id` values exactly as emitted by specialists; do not invent ids.
+- `new_severity` is required for `escalate`/`downgrade`, omitted for `dismiss`.
+- Emit `{ "overrides": [] }` when you are not overriding anything.

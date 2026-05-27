@@ -28,7 +28,7 @@ pub async fn serve_stdio() -> Result<()> {
     let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
     let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
     eprintln!(
-        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 9 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, check_tests, run_tests, check_secrets)\n  backend: {}",
+        "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 10 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, check_tests, run_tests, check_secrets, diff_findings)\n  backend: {}",
         env!("CARGO_PKG_VERSION"),
         specialist_count,
         orchestrator_count,
@@ -297,6 +297,21 @@ fn run_tests_input_schema() -> Value {
     })
 }
 
+fn diff_findings_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "previous": { "type": "string", "description": "Previous pass findings as a JSON object {\"findings\":[...]}" },
+            "current": { "type": "string", "description": "Current pass findings as a JSON object {\"findings\":[...]}" },
+            "previously_fixed": { "type": "array", "items": { "type": "string" }, "description": "Finding ids fixed in earlier passes (for regression detection)" },
+            "overrides": { "type": "array", "items": { "type": "object" }, "description": "Architect overrides: [{finding_id, action: escalate|downgrade|dismiss, new_severity?}]" },
+            "block_severities": { "type": "array", "items": { "type": "string" }, "description": "Severities that block PASS (default [critical, high])" },
+            "max_new": { "type": "integer", "description": "Max new findings allowed for PASS (default 0)" }
+        },
+        "required": ["previous", "current"]
+    })
+}
+
 fn check_secrets_input_schema() -> Value {
     json!({
         "type": "object",
@@ -387,6 +402,12 @@ fn handle_list_tools(id: &Value, state: &ServerState) -> Value {
         "inputSchema": check_secrets_input_schema()
     }));
 
+    tools.push(json!({
+        "name": "diff_findings",
+        "description": "Compare two passes of structured findings (fixed/persisting/new/regressed) and render a PASS/FAIL verdict",
+        "inputSchema": diff_findings_input_schema()
+    }));
+
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -459,6 +480,18 @@ struct RunTestsInput {
 #[derive(Deserialize)]
 struct CheckSecretsInput {
     repo_path: String,
+}
+
+#[derive(Deserialize)]
+struct DiffFindingsInput {
+    previous: String,
+    current: String,
+    #[serde(default)]
+    previously_fixed: Vec<String>,
+    #[serde(default)]
+    overrides: Vec<crate::tools::diff_findings::Override>,
+    block_severities: Option<Vec<String>>,
+    max_new: Option<u32>,
 }
 
 fn tool_result(text: &str, is_error: bool) -> Value {
@@ -611,6 +644,22 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
         };
         let result = crate::tools::check_secrets::execute_check_secrets(&input.repo_path).await;
+        return mcp_result(id, tool_result(&result.content, result.is_error));
+    }
+
+    if name == "diff_findings" {
+        let input: DiffFindingsInput = match serde_json::from_value(args) {
+            Ok(v) => v,
+            Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
+        };
+        let result = crate::tools::diff_findings::execute_diff_findings(
+            &input.previous,
+            &input.current,
+            &input.previously_fixed,
+            &input.overrides,
+            input.block_severities.as_deref(),
+            input.max_new,
+        );
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
