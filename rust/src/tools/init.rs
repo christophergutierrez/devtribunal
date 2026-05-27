@@ -10,6 +10,7 @@ use crate::types::{embedded_skills, parse_agent};
 const GITIGNORE_ENTRIES: &[&str] = &[
     ".devtribunal_agents/",
     ".claude/commands/dt/",
+    ".devtribunal/",
 ];
 
 const SKIP_SCAN_DIRS: &[&str] = &[
@@ -315,5 +316,18 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
     ToolResult {
         content: summary.join("\n"),
         is_error: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gitignores_devtribunal_artifact_dir() {
+        // .devtribunal/ (ephemeral run artifacts) must be gitignored by dt_init,
+        // separate from .devtribunal_agents/ (config).
+        assert!(GITIGNORE_ENTRIES.contains(&".devtribunal/"));
+        assert!(GITIGNORE_ENTRIES.contains(&".devtribunal_agents/"));
     }
 }

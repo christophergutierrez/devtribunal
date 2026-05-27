@@ -250,6 +250,7 @@ pub const EMBEDDED_AGENTS: &[(&str, &str)] = &[
 ];
 
 const EMBEDDED_SKILLS: &[(&str, &str)] = &[
+    ("converge.md", include_str!("../../templates/skills/converge.md")),
     ("full.md", include_str!("../../templates/skills/full.md")),
     ("incremental-pr-ready.md", include_str!("../../templates/skills/incremental-pr-ready.md")),
     ("incremental-staged.md", include_str!("../../templates/skills/incremental-staged.md")),

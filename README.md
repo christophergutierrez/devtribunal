@@ -63,6 +63,9 @@ Use the scaffolded skill commands:
 - `/dt:incremental-staged` — review staged changes + blast radius
 - `/dt:incremental-pr-ready` — review unpushed commits + blast radius
 - `/dt:incremental-wip` — review all work-in-progress + blast radius
+- `/dt:converge` — iterative loop: review → fix → re-review the affected scope → run tests → diff findings → **PASS/FAIL verdict**. Repeats until it passes or hits a budget/thrash guard. Writes `.devtribunal/verdict.json` (CI-consumable) and an untracked `.devtribunal/review-<timestamp>.md` prose report. `.devtribunal/` is gitignored by `dt_init`.
+
+Verdict rule (default, tunable): PASS = no open critical/high findings + zero regressions + new-finding count below threshold.
 
 Or call tools directly:
 
