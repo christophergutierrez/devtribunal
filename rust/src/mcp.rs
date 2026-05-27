@@ -705,7 +705,7 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                     let content = format!("{indicator}\n\n{}", result.content);
                     mcp_result(id, tool_result(&content, false))
                 }
-                Backend::Api | Backend::Local => {
+                Backend::Api | Backend::Local | Backend::Openai => {
                     // Api/Local mode: send the prompt to the backend and return finished findings
                     match backend::process_review(&state.backend_config, &result.content).await {
                         Ok(Some(findings)) => {

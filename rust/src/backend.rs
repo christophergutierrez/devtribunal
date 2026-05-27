@@ -12,8 +12,21 @@ use serde_json::json;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Backend {
     Host,
+    /// Anthropic Messages API.
     Api,
+    /// OpenAI-compatible local endpoint (ollama, llama.cpp, vllm) — keyless by default.
     Local,
+    /// OpenAI-compatible remote endpoint (OpenAI, xAI/Grok, OpenRouter, remote vLLM/Hermes)
+    /// reached with a Bearer key. Configured via DEVTRIBUNAL_API_URL + DEVTRIBUNAL_API_KEY + DEVTRIBUNAL_MODEL.
+    Openai,
+}
+
+/// `Authorization: Bearer <key>` value, or None when no key is configured (local endpoints).
+fn bearer_header(api_key: Option<&str>) -> Option<String> {
+    api_key
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(|k| format!("Bearer {k}"))
 }
 
 /// All configuration for the chosen backend.
@@ -38,8 +51,9 @@ pub fn load_config() -> BackendConfig {
     let api_key = std::env::var("DEVTRIBUNAL_API_KEY").ok();
     let model = std::env::var("DEVTRIBUNAL_MODEL")
         .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
-    let local_url = std::env::var("DEVTRIBUNAL_LOCAL_URL").ok();
-    let local_model = std::env::var("DEVTRIBUNAL_LOCAL_MODEL").ok();
+    let mut local_url = std::env::var("DEVTRIBUNAL_LOCAL_URL").ok();
+    let mut local_model = std::env::var("DEVTRIBUNAL_LOCAL_MODEL").ok();
+    let api_url = std::env::var("DEVTRIBUNAL_API_URL").ok();
 
     let (backend, fallback_warning) = match backend_str.as_str() {
         "api" => {
@@ -76,8 +90,36 @@ pub fn load_config() -> BackendConfig {
                 (Backend::Local, None)
             }
         }
+        "openai" => {
+            if api_url.is_none() {
+                tracing::error!(
+                    "DEVTRIBUNAL_BACKEND=openai but DEVTRIBUNAL_API_URL is not set — falling back to host mode"
+                );
+                (
+                    Backend::Host,
+                    Some("WARNING: DEVTRIBUNAL_BACKEND=openai but DEVTRIBUNAL_API_URL is not set. Falling back to host mode.".to_string()),
+                )
+            } else if bearer_header(api_key.as_deref()).is_none() {
+                tracing::error!(
+                    "DEVTRIBUNAL_BACKEND=openai but DEVTRIBUNAL_API_KEY is not set — falling back to host mode"
+                );
+                (
+                    Backend::Host,
+                    Some("WARNING: DEVTRIBUNAL_BACKEND=openai but DEVTRIBUNAL_API_KEY is not set. Falling back to host mode.".to_string()),
+                )
+            } else {
+                (Backend::Openai, None)
+            }
+        }
         _ => (Backend::Host, None),
     };
+
+    // openai mode reuses the OpenAI-compatible call path, but sourced from
+    // DEVTRIBUNAL_API_URL + DEVTRIBUNAL_MODEL (and authenticated with the API key).
+    if backend == Backend::Openai {
+        local_url = api_url;
+        local_model = Some(model.clone());
+    }
 
     BackendConfig {
         backend,
@@ -116,6 +158,19 @@ pub fn mode_indicator(config: &BackendConfig) -> String {
                 model, host
             )
         }
+        Backend::Openai => {
+            let url = config.local_url.as_deref().unwrap_or("unknown");
+            let host = url
+                .strip_prefix("http://")
+                .or_else(|| url.strip_prefix("https://"))
+                .unwrap_or(url)
+                .trim_end_matches("/v1")
+                .trim_end_matches('/');
+            format!(
+                "[devtribunal \u{00b7} openai mode \u{00b7} {} @ {} \u{00b7} billed to your API key]",
+                config.model, host
+            )
+        }
     }
 }
 
@@ -128,7 +183,19 @@ pub async fn process_review(config: &BackendConfig, prompt: &str) -> Result<Opti
     match config.backend {
         Backend::Host => Ok(None),
         Backend::Api => call_anthropic_api(config, prompt).await.map(Some),
-        Backend::Local => call_local_api(config, prompt).await.map(Some),
+        Backend::Local | Backend::Openai => {
+            let base_url = config
+                .local_url
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("endpoint URL not configured"))?;
+            let model = config
+                .local_model
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("model not configured"))?;
+            call_openai_compatible(base_url, model, config.api_key.as_deref(), prompt)
+                .await
+                .map(Some)
+        }
     }
 }
 
@@ -186,17 +253,13 @@ async fn call_anthropic_api(config: &BackendConfig, prompt: &str) -> Result<Stri
     Ok(text)
 }
 
-/// Call an OpenAI-compatible local endpoint.
-async fn call_local_api(config: &BackendConfig, prompt: &str) -> Result<String> {
-    let base_url = config
-        .local_url
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("Local URL not configured"))?;
-    let model = config
-        .local_model
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("Local model not configured"))?;
-
+/// Call an OpenAI-compatible chat-completions endpoint (local keyless, or remote with a Bearer key).
+async fn call_openai_compatible(
+    base_url: &str,
+    model: &str,
+    api_key: Option<&str>,
+    prompt: &str,
+) -> Result<String> {
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
     let client = reqwest::Client::new();
@@ -208,12 +271,14 @@ async fn call_local_api(config: &BackendConfig, prompt: &str) -> Result<String> 
         "max_tokens": 4096
     });
 
-    let response = client
+    let mut req = client
         .post(&url)
         .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
+        .json(&body);
+    if let Some(auth) = bearer_header(api_key) {
+        req = req.header("authorization", auth);
+    }
+    let response = req.send().await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -259,6 +324,7 @@ mod tests {
         std::env::remove_var("DEVTRIBUNAL_MODEL");
         std::env::remove_var("DEVTRIBUNAL_LOCAL_URL");
         std::env::remove_var("DEVTRIBUNAL_LOCAL_MODEL");
+        std::env::remove_var("DEVTRIBUNAL_API_URL");
     }
 
     #[test]
@@ -417,5 +483,57 @@ mod tests {
         };
         let result = process_review(&config, "test prompt").await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_bearer_header() {
+        assert_eq!(bearer_header(Some("sk-123")).as_deref(), Some("Bearer sk-123"));
+        assert_eq!(bearer_header(Some("   ")), None);
+        assert_eq!(bearer_header(None), None);
+    }
+
+    #[test]
+    fn test_load_config_openai_requires_url_and_key() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_env();
+        std::env::set_var("DEVTRIBUNAL_BACKEND", "openai");
+
+        // missing URL -> host
+        let c = load_config();
+        assert_eq!(c.backend, Backend::Host);
+        assert!(c.fallback_warning.unwrap().contains("API_URL"));
+
+        // missing key -> host
+        std::env::set_var("DEVTRIBUNAL_API_URL", "https://api.x.ai/v1");
+        let c = load_config();
+        assert_eq!(c.backend, Backend::Host);
+        assert!(c.fallback_warning.unwrap().contains("API_KEY"));
+
+        // complete -> openai, url/model sourced from API_URL + MODEL
+        std::env::set_var("DEVTRIBUNAL_API_KEY", "xai-test");
+        std::env::set_var("DEVTRIBUNAL_MODEL", "grok-code");
+        let c = load_config();
+        assert_eq!(c.backend, Backend::Openai);
+        assert!(c.fallback_warning.is_none());
+        assert_eq!(c.local_url.as_deref(), Some("https://api.x.ai/v1"));
+        assert_eq!(c.local_model.as_deref(), Some("grok-code"));
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_mode_indicator_openai() {
+        let config = BackendConfig {
+            backend: Backend::Openai,
+            api_key: Some("xai-test".to_string()),
+            model: "grok-code".to_string(),
+            local_url: Some("https://api.x.ai/v1".to_string()),
+            local_model: Some("grok-code".to_string()),
+            fallback_warning: None,
+        };
+        let indicator = mode_indicator(&config);
+        assert!(indicator.contains("openai mode"));
+        assert!(indicator.contains("grok-code"));
+        assert!(indicator.contains("api.x.ai"));
     }
 }
