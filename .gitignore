@@ -10,3 +10,6 @@ tmp/
 .devtribunal_agents/
 .claude/commands/dt/
 .fastembed_cache/
+
+# devtribunal (remove these lines to version-control agents and skills)
+.devtribunal/
