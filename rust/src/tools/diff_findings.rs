@@ -9,7 +9,18 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::ToolResult;
-use crate::findings::{from_json, Finding, Severity};
+use crate::findings::{from_json, parse_findings_from_markdown, Finding, FindingSet, Severity};
+
+/// Accept either a findings JSON object (`{"findings":[...]}`) or raw agent
+/// markdown containing a `## Structured Findings` json block. Lets the skill pass
+/// specialist output through with or without pre-extracting the JSON.
+fn parse_either(s: &str) -> anyhow::Result<FindingSet> {
+    if s.trim_start().starts_with('{') {
+        from_json(s)
+    } else {
+        parse_findings_from_markdown(s)
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Override {
@@ -133,11 +144,11 @@ pub fn execute_diff_findings(
     block_severities: Option<&[String]>,
     max_new: Option<u32>,
 ) -> ToolResult {
-    let prev = match from_json(previous) {
+    let prev = match parse_either(previous) {
         Ok(s) => s,
         Err(e) => return ToolResult { content: format!("invalid `previous` findings: {e}"), is_error: true },
     };
-    let cur = match from_json(current) {
+    let cur = match parse_either(current) {
         Ok(s) => s,
         Err(e) => return ToolResult { content: format!("invalid `current` findings: {e}"), is_error: true },
     };
@@ -178,6 +189,16 @@ mod tests {
 
     fn fset(json: &str) -> Vec<Finding> {
         from_json(json).unwrap().findings
+    }
+
+    #[test]
+    fn parse_either_accepts_markdown_and_json() {
+        let json = r#"{"findings":[{"severity":"low","confidence":"possible","category":"c","file":"a.rs","title":"T"}]}"#;
+        let md = format!("prose above\n\n## Structured Findings\n\n```json\n{json}\n```\n");
+        let from_md = parse_either(&md).unwrap();
+        let from_js = parse_either(json).unwrap();
+        assert_eq!(from_md.findings.len(), 1);
+        assert_eq!(from_md.findings[0].id, from_js.findings[0].id);
     }
 
     // Helper: a findings JSON object from (file, title, severity) tuples.

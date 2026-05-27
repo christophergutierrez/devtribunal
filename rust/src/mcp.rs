@@ -730,3 +730,56 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{handle_call_tool, handle_list_tools, ServerState};
+    use crate::backend;
+    use crate::types::load_embedded_agents;
+    use serde_json::json;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    fn test_state() -> ServerState {
+        ServerState {
+            builtin_agents: load_embedded_agents(),
+            agent_cache: Mutex::new(HashMap::new()),
+            backend_config: backend::load_config(),
+        }
+    }
+
+    #[test]
+    fn list_tools_includes_all_management_tools() {
+        let resp = handle_list_tools(&json!(1), &test_state());
+        let names: Vec<String> = resp["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        for t in [
+            "dt_init", "check_tools", "blast_radius", "check_tracking", "check_deps",
+            "check_patterns", "run_tests", "check_secrets", "diff_findings", "check_tests",
+        ] {
+            assert!(names.contains(&t.to_string()), "tools/list missing {t}");
+        }
+        assert!(names.iter().any(|n| n == "review_rust"), "specialists should be registered");
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_returns_error() {
+        let params = json!({ "name": "does_not_exist", "arguments": {} });
+        let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
+        assert_eq!(resp["result"]["isError"].as_bool(), Some(true));
+    }
+
+    #[tokio::test]
+    async fn malformed_args_return_invalid_input() {
+        // check_deps requires repo_path: String; passing a number must be rejected.
+        let params = json!({ "name": "check_deps", "arguments": { "repo_path": 123 } });
+        let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
+        assert_eq!(resp["result"]["isError"].as_bool(), Some(true));
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("Invalid input"), "expected 'Invalid input', got: {text}");
+    }
+}

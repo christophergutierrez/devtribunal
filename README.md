@@ -67,6 +67,14 @@ Use the scaffolded skill commands:
 
 Verdict rule (default, tunable): PASS = no open critical/high findings + zero regressions + new-finding count below threshold.
 
+**Expected workflow for `/dt:converge`:**
+
+1. **Make your changes** and leave them uncommitted (modified or staged) in the working tree.
+2. **Run `/dt:converge`** — it reviews the work-in-progress diff, applies fixes for blocking findings *into those same changes*, re-reviews only the affected scope, runs the tests, and renders the verdict, looping until PASS or a budget/thrash guard.
+3. **Commit once the verdict is PASS** — what you commit is the reviewed-and-fixed result.
+
+Do **not** commit before converging: bare `/dt:converge` scopes to the uncommitted WIP diff, so committed work is invisible to it (use `/dt:incremental-pr-ready` to review already-committed, unpushed work instead).
+
 Or call tools directly:
 
 ```

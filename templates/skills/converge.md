@@ -8,6 +8,14 @@ Drive devtribunal as a loop: review → apply fixes → re-review only the affec
 
 If `$ARGUMENTS` is provided, scope the initial review to those files/directories; otherwise review the work-in-progress diff.
 
+## Expected workflow
+
+1. **Make your changes** and leave them uncommitted (modified or staged) in the working tree.
+2. **Run this loop** — it reviews the WIP diff, applies fixes for blocking findings *into those same changes*, re-reviews only the affected scope, runs tests, and renders the verdict.
+3. **Commit once the verdict is PASS** — what you commit is the reviewed-and-fixed result.
+
+Do NOT commit before converging: bare `/dt:converge` scopes to the uncommitted WIP diff, so committed work is invisible to it (use `/dt:incremental-pr-ready` for already-committed, unpushed work).
+
 ## Guardrails (read first)
 
 - **MAX_PASSES = 3** by default. Never loop unboundedly.

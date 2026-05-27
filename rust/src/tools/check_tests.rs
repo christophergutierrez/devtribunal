@@ -6,7 +6,7 @@ use ignore::WalkBuilder;
 
 use super::ToolResult;
 use crate::lang::{language_for_path, SKIP_DIRS, SOURCE_EXTENSIONS};
-use crate::shell::safe_exec;
+use crate::shell::safe_exec_in_dir;
 
 const MAX_FILES: usize = 5000;
 const MAX_FILE_SIZE: usize = 100 * 1024; // 100KB
@@ -185,7 +185,7 @@ struct TestRunResult {
     raw_output: String,
 }
 
-fn parse_cargo_test_output(stdout: &str, stderr: &str) -> TestRunResult {
+fn parse_cargo_test_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRunResult {
     let combined = format!("{stdout}\n{stderr}");
     let mut passed: u32 = 0;
     let mut failed: u32 = 0;
@@ -247,6 +247,10 @@ fn parse_cargo_test_output(stdout: &str, stderr: &str) -> TestRunResult {
 
     let status = if failed > 0 {
         format!("FAILED ({failed} failure{})", if failed == 1 { "" } else { "s" })
+    } else if exit_code != 0 {
+        // Non-zero exit with no parsed failures means the runner itself errored
+        // (compile error, bad flag, etc.). Never report PASSED in that case.
+        format!("FAILED (test runner errored — exit code {exit_code})")
     } else {
         "PASSED".to_string()
     };
@@ -812,23 +816,18 @@ pub async fn execute_check_tests(repo_path: &str, run: bool, timeout_secs: u64) 
                 let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
                 let timeout = Duration::from_secs(timeout_secs);
 
-                // Run from the repo directory by prepending -C for cargo, or using the command directly
-                let exec_result = if bin == "cargo" {
-                    let mut full_args = vec!["-C".to_string(), repo_path.to_string()];
-                    full_args.extend(args);
-                    safe_exec(bin, &full_args, timeout).await
-                } else if bin == "go" {
-                    // go test needs to run from the repo dir
-                    let mut full_args = vec!["test".to_string()];
-                    full_args.push("./...".to_string());
-                    // Use -C flag for go 1.21+, fallback: we set via args
-                    safe_exec(bin, &full_args, timeout).await
+                // Run the test command IN the repo directory (cwd), not via the
+                // unstable `cargo -C` flag (which errors out and was misreported as PASSED).
+                let repo = std::path::Path::new(repo_path);
+                let exec_result = if bin == "go" {
+                    let full_args = vec!["test".to_string(), "./...".to_string()];
+                    safe_exec_in_dir(bin, &full_args, repo, timeout).await
                 } else {
-                    safe_exec(bin, &args, timeout).await
+                    safe_exec_in_dir(bin, &args, repo, timeout).await
                 };
 
                 let parsed = match r.name.as_str() {
-                    "cargo test" => parse_cargo_test_output(&exec_result.stdout, &exec_result.stderr),
+                    "cargo test" => parse_cargo_test_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
                     "pytest" => parse_pytest_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
                     "npm test" | "yarn test" | "pnpm test" => parse_npm_test_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
                     "go test" => parse_go_test_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
@@ -1017,7 +1016,7 @@ mod tests {
     #[test]
     fn test_parse_cargo_test_pass() {
         let stdout = "running 5 tests\ntest foo ... ok\ntest bar ... ok\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.2s\n";
-        let result = parse_cargo_test_output(stdout, "");
+        let result = parse_cargo_test_output(stdout, "", 0);
         assert_eq!(result.status, "PASSED");
         assert_eq!(result.passed, 5);
         assert_eq!(result.failed, 0);
@@ -1027,11 +1026,21 @@ mod tests {
     #[test]
     fn test_parse_cargo_test_fail() {
         let stdout = "running 5 tests\ntest foo ... ok\n---- bar stdout ----\nassertion failed: expected true\ntest result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.5s\n";
-        let result = parse_cargo_test_output(stdout, "");
+        let result = parse_cargo_test_output(stdout, "", 101);
         assert_eq!(result.status, "FAILED (1 failure)");
         assert_eq!(result.passed, 4);
         assert_eq!(result.failed, 1);
         assert!(!result.failures.is_empty());
+    }
+
+    #[test]
+    fn test_parse_cargo_test_runner_errored() {
+        // No "test result" line + non-zero exit (e.g. a bad cargo flag or compile error)
+        // must NOT be reported as PASSED.
+        let stderr = "error: the `-C` flag is unstable, pass `-Z unstable-options`\n";
+        let result = parse_cargo_test_output("", stderr, 1);
+        assert!(result.status.starts_with("FAILED"), "errored runner must be FAILED, got {:?}", result.status);
+        assert_eq!(result.passed, 0);
     }
 
     #[test]
