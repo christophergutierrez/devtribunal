@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::backend::{self, BackendConfig, Backend};
+use crate::routing::{self, RoutingConfig};
 use crate::types::{AgentDefinition, AgentRole, load_embedded_agents, load_agents_from_dir, resolve_agents_dir};
 
 /// Shared server state.
@@ -16,8 +17,34 @@ struct ServerState {
     builtin_agents: HashMap<String, AgentDefinition>,
     /// Cache of repo-level agent overrides. Lock must never be held across .await points.
     agent_cache: Mutex<HashMap<PathBuf, HashMap<String, AgentDefinition>>>,
-    /// Backend configuration for LLM processing.
+    /// Backend configuration for LLM processing (env-derived global default).
     backend_config: BackendConfig,
+    /// Cache of per-repo routing config (`.devtribunal.yml`), keyed by lookup start path.
+    /// `None` value = no/invalid config found at that location. Lock never held across .await.
+    routing_cache: Mutex<HashMap<PathBuf, Option<RoutingConfig>>>,
+}
+
+/// Resolve the effective backend config for `agent_name`, applying per-agent routing from
+/// `.devtribunal.yml` (discovered relative to `start_path`) over the env-derived default.
+/// Returns the env-derived default unchanged when no routing config applies.
+fn effective_backend(
+    state: &ServerState,
+    agent_name: &str,
+    start_path: &str,
+    is_directory: bool,
+) -> BackendConfig {
+    let key = PathBuf::from(start_path);
+    let routing = {
+        let mut cache = state.routing_cache.lock().unwrap_or_else(|e| {
+            tracing::warn!("routing cache mutex was poisoned, recovering");
+            e.into_inner()
+        });
+        cache
+            .entry(key)
+            .or_insert_with(|| routing::load_routing(start_path, is_directory))
+            .clone()
+    };
+    routing::resolve_backend_for_agent(agent_name, routing.as_ref(), &state.backend_config)
 }
 
 /// Run the MCP server over stdio.
@@ -43,6 +70,7 @@ pub async fn serve_stdio() -> Result<()> {
         builtin_agents,
         agent_cache: Mutex::new(HashMap::new()),
         backend_config,
+        routing_cache: Mutex::new(HashMap::new()),
     };
 
     let stdin = BufReader::new(tokio::io::stdin());
@@ -682,7 +710,46 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                 builtin_agent.clone()
             };
             let result = crate::tools::orchestrate::execute_orchestrate(&agent, &input.findings, input.context.as_deref());
-            mcp_result(id, tool_result(&result.content, result.is_error))
+            if result.is_error {
+                return mcp_result(id, tool_result(&result.content, true));
+            }
+
+            // Apply per-agent routing (backend mode only). Orchestrators were previously never
+            // sent to the backend; in backend mode the synthesis prompt is now processed too.
+            let start = input.repo_path.as_deref().unwrap_or(".");
+            let cfg = effective_backend(state, name, start, true);
+            let indicator = backend::mode_indicator(&cfg);
+
+            match cfg.backend {
+                Backend::Host => {
+                    let prefix = cfg
+                        .fallback_warning
+                        .as_deref()
+                        .map(|w| format!("{w}\n\n"))
+                        .unwrap_or_default();
+                    let content = format!("{prefix}{indicator}\n\n{}", result.content);
+                    mcp_result(id, tool_result(&content, false))
+                }
+                Backend::Api | Backend::Local | Backend::Openai => {
+                    match backend::process_review(&cfg, &result.content).await {
+                        Ok(Some(out)) => {
+                            let content = format!("{indicator}\n\n{out}");
+                            mcp_result(id, tool_result(&content, false))
+                        }
+                        Ok(None) => {
+                            let content = format!("{indicator}\n\n{}", result.content);
+                            mcp_result(id, tool_result(&content, false))
+                        }
+                        Err(e) => {
+                            let content = format!(
+                                "{indicator}\n\nERROR: Backend call failed: {e}\n\nFalling back to raw orchestration prompt:\n\n{}",
+                                result.content
+                            );
+                            mcp_result(id, tool_result(&content, true))
+                        }
+                    }
+                }
+            }
         }
         AgentRole::Specialist => {
             let input: ReviewInput = match serde_json::from_value(args) {
@@ -697,17 +764,25 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                 return mcp_result(id, tool_result(&result.content, true));
             }
 
-            let indicator = backend::mode_indicator(&state.backend_config);
+            // Apply per-agent routing (backend mode only) over the env-derived default.
+            let cfg = effective_backend(state, name, &input.file_path, false);
+            let indicator = backend::mode_indicator(&cfg);
 
-            match state.backend_config.backend {
+            match cfg.backend {
                 Backend::Host => {
-                    // Host mode: return the prompt (linter output + instructions) for the host LLM
-                    let content = format!("{indicator}\n\n{}", result.content);
+                    // Host mode: return the prompt (linter output + instructions) for the host LLM.
+                    // A routing misconfiguration that degraded to host is surfaced as a prefix.
+                    let prefix = cfg
+                        .fallback_warning
+                        .as_deref()
+                        .map(|w| format!("{w}\n\n"))
+                        .unwrap_or_default();
+                    let content = format!("{prefix}{indicator}\n\n{}", result.content);
                     mcp_result(id, tool_result(&content, false))
                 }
                 Backend::Api | Backend::Local | Backend::Openai => {
                     // Api/Local mode: send the prompt to the backend and return finished findings
-                    match backend::process_review(&state.backend_config, &result.content).await {
+                    match backend::process_review(&cfg, &result.content).await {
                         Ok(Some(findings)) => {
                             let content = format!("{indicator}\n\n{findings}");
                             mcp_result(id, tool_result(&content, false))
@@ -745,6 +820,7 @@ mod tests {
             builtin_agents: load_embedded_agents(),
             agent_cache: Mutex::new(HashMap::new()),
             backend_config: backend::load_config(),
+            routing_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -781,5 +857,64 @@ mod tests {
         assert_eq!(resp["result"]["isError"].as_bool(), Some(true));
         let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
         assert!(text.contains("Invalid input"), "expected 'Invalid input', got: {text}");
+    }
+
+    // --- Phase 21: per-agent routing applied in dispatch (AC-4) ---
+
+    #[tokio::test]
+    async fn specialist_routing_applied_in_dispatch() {
+        // A route whose key_env is unset degrades to host mode with a warning naming the agent —
+        // a signal only the routing path produces, proving routing was applied in dispatch.
+        std::env::remove_var("ROUTING_TEST_DISPATCH_KEY");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(".devtribunal.yml"),
+            "routes:\n  review_rust:\n    provider: anthropic\n    key_env: ROUTING_TEST_DISPATCH_KEY\n",
+        )
+        .unwrap();
+        let file = dir.path().join("foo.rs");
+        std::fs::write(&file, "fn main() {}\n").unwrap();
+
+        let params = json!({ "name": "review_rust", "arguments": { "file_path": file.to_str().unwrap() } });
+        let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
+        assert_eq!(resp["result"]["isError"].as_bool(), Some(false));
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("degraded to host mode"), "expected routing warning, got: {text}");
+        assert!(text.contains("review_rust"), "warning should name the agent, got: {text}");
+    }
+
+    #[tokio::test]
+    async fn orchestrator_routing_applied_in_dispatch() {
+        // Orchestrators were previously never routed; confirm routing now reaches architect.
+        std::env::remove_var("ROUTING_TEST_ORCH_KEY");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(".devtribunal.yml"),
+            "routes:\n  architect:\n    provider: openai\n    model: grok\n    url: https://api.x.ai/v1\n    key_env: ROUTING_TEST_ORCH_KEY\n",
+        )
+        .unwrap();
+
+        let params = json!({
+            "name": "architect",
+            "arguments": { "findings": "## Finding\nspecialist output", "repo_path": dir.path().to_str().unwrap() }
+        });
+        let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
+        assert_eq!(resp["result"]["isError"].as_bool(), Some(false));
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("degraded to host mode"), "expected routing warning, got: {text}");
+        assert!(text.contains("architect"), "warning should name the agent, got: {text}");
+    }
+
+    #[tokio::test]
+    async fn orchestrator_without_routing_config_emits_no_routing_warning() {
+        // No .devtribunal.yml => env-derived behavior, no routing degradation warning.
+        let dir = tempfile::tempdir().unwrap();
+        let params = json!({
+            "name": "architect",
+            "arguments": { "findings": "## Finding\nx", "repo_path": dir.path().to_str().unwrap() }
+        });
+        let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(!text.contains("degraded to host mode"), "no config => no routing warning, got: {text}");
     }
 }

@@ -2,6 +2,7 @@ mod backend;
 mod findings;
 mod lang;
 mod mcp;
+mod routing;
 mod runner;
 mod shell;
 mod tools;
