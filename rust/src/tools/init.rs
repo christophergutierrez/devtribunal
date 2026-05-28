@@ -126,8 +126,14 @@ fn ensure_mcp_json(repo_path: &Path) -> Option<String> {
 // devtribunal wrote. On re-init this lets us tell a *pristine* file (untouched
 // since we wrote it — safe to refresh) from one the user *edited* (leave alone).
 
+// Markdown skills use an HTML comment so the marker is invisible when rendered.
 const MANAGED_MARKER_PREFIX: &str = "<!-- dt:managed fnv=";
 const MANAGED_MARKER_SUFFIX: &str = " -->";
+
+// YAML configs use a `#` comment so the marked file is still valid YAML (an HTML
+// comment would make serde_yaml fail and silently disable routing).
+const YAML_MANAGED_MARKER_PREFIX: &str = "# dt:managed fnv=";
+const YAML_MANAGED_MARKER_SUFFIX: &str = "";
 
 fn content_fnv_hex(s: &str) -> String {
     // FNV-1a-64 — stable across releases (unlike std DefaultHasher); used only to
@@ -140,13 +146,15 @@ fn content_fnv_hex(s: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Canonical body + provenance marker, exactly as written to disk.
-fn stamp_managed(content: &str) -> String {
+/// Canonical body + provenance marker (given comment delimiters), exactly as written to disk.
+fn stamp_managed_with(content: &str, prefix: &str, suffix: &str) -> String {
     let body = content.trim_end();
-    format!(
-        "{body}\n{MANAGED_MARKER_PREFIX}{}{MANAGED_MARKER_SUFFIX}\n",
-        content_fnv_hex(body)
-    )
+    format!("{body}\n{prefix}{}{suffix}\n", content_fnv_hex(body))
+}
+
+/// Canonical body + HTML-comment provenance marker (markdown skills).
+fn stamp_managed(content: &str) -> String {
+    stamp_managed_with(content, MANAGED_MARKER_PREFIX, MANAGED_MARKER_SUFFIX)
 }
 
 enum ManagedState {
@@ -158,11 +166,12 @@ enum ManagedState {
     Unmanaged,
 }
 
-fn classify_managed(on_disk: &str) -> ManagedState {
+fn classify_managed_with(on_disk: &str, prefix: &str, suffix: &str) -> ManagedState {
     let trimmed = on_disk.trim_end();
     if let Some((body, last_line)) = trimmed.rsplit_once('\n') {
-        if let Some(rest) = last_line.strip_prefix(MANAGED_MARKER_PREFIX) {
-            if let Some(stored) = rest.strip_suffix(MANAGED_MARKER_SUFFIX) {
+        if let Some(rest) = last_line.strip_prefix(prefix) {
+            // suffix may be empty (YAML marker): strip_suffix("") returns Some(rest).
+            if let Some(stored) = rest.strip_suffix(suffix) {
                 let body = body.trim_end();
                 return if content_fnv_hex(body) == stored {
                     ManagedState::Pristine(body.to_string())
@@ -173,6 +182,10 @@ fn classify_managed(on_disk: &str) -> ManagedState {
         }
     }
     ManagedState::Unmanaged
+}
+
+fn classify_managed(on_disk: &str) -> ManagedState {
+    classify_managed_with(on_disk, MANAGED_MARKER_PREFIX, MANAGED_MARKER_SUFFIX)
 }
 
 #[derive(Default)]
@@ -238,6 +251,75 @@ fn scaffold_skills(repo_path: &Path) -> SkillScaffold {
         }
     }
 
+    out
+}
+
+// --- Routing config (.devtribunal.yml) ---
+//
+// Unlike agents/skills, the routing config is VERSION-CONTROLLED (never gitignored).
+// It uses the YAML-comment provenance marker so the written file stays valid YAML and
+// the Phase-21 routing parser reads it cleanly.
+
+const ROUTING_TEMPLATE: &str = include_str!("../../../templates/devtribunal.yml");
+
+#[derive(Default)]
+struct RoutingScaffold {
+    results: Vec<String>,
+    written: usize,
+    updated: usize,
+    skipped: usize,
+    /// Left untouched because the user edited it (had our marker, changed).
+    user_edited: bool,
+    /// Left untouched because it carries no managed marker.
+    unmanaged: bool,
+}
+
+fn stamp_routing(content: &str) -> String {
+    stamp_managed_with(content, YAML_MANAGED_MARKER_PREFIX, YAML_MANAGED_MARKER_SUFFIX)
+}
+
+/// Scaffold (or refresh) the version-controlled `.devtribunal.yml` at the repo root.
+/// Mirrors `scaffold_skills` provenance handling; never gitignored.
+fn scaffold_routing_config(repo_path: &Path) -> RoutingScaffold {
+    let target_path = repo_path.join(".devtribunal.yml");
+    let canonical = ROUTING_TEMPLATE.trim_end();
+    let mut out = RoutingScaffold::default();
+
+    if target_path.exists() {
+        let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
+        match classify_managed_with(&existing, YAML_MANAGED_MARKER_PREFIX, YAML_MANAGED_MARKER_SUFFIX) {
+            ManagedState::Pristine(body) if body == canonical => {
+                out.results.push("  SKIPPED .devtribunal.yml (already current)".to_string());
+                out.skipped += 1;
+            }
+            ManagedState::Pristine(_) => match std::fs::write(&target_path, stamp_routing(ROUTING_TEMPLATE)) {
+                Ok(_) => {
+                    out.results.push("  UPDATED .devtribunal.yml (refreshed — was an older devtribunal version)".to_string());
+                    out.updated += 1;
+                }
+                Err(e) => out.results.push(format!("  ERROR   .devtribunal.yml: {e}")),
+            },
+            ManagedState::UserEdited => {
+                out.results.push("  SKIPPED .devtribunal.yml (user-edited — left as is)".to_string());
+                out.skipped += 1;
+                out.user_edited = true;
+            }
+            ManagedState::Unmanaged => {
+                out.results.push("  SKIPPED .devtribunal.yml (no managed marker — left as is)".to_string());
+                out.skipped += 1;
+                out.unmanaged = true;
+            }
+        }
+        return out;
+    }
+
+    match std::fs::write(&target_path, stamp_routing(ROUTING_TEMPLATE)) {
+        Ok(_) => {
+            out.results.push("  WROTE   .devtribunal.yml".to_string());
+            out.written += 1;
+        }
+        Err(e) => out.results.push(format!("  ERROR   .devtribunal.yml: {e}")),
+    }
     out
 }
 
@@ -341,6 +423,9 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
     // Scaffold skills
     let skills = scaffold_skills(repo);
 
+    // Scaffold the version-controlled routing config (.devtribunal.yml) — NOT gitignored.
+    let routing_cfg = scaffold_routing_config(repo);
+
     // Ensure .mcp.json has devtribunal entry
     let mcp_json_added = ensure_mcp_json(repo);
 
@@ -397,6 +482,29 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
                 summary.push(format!("    - {f}"));
             }
         }
+    }
+
+    summary.push(String::new());
+    summary.push("## Routing config → .devtribunal.yml".to_string());
+    summary.extend(routing_cfg.results.clone());
+    summary.push(
+        "  Version-controlled (committed, NOT gitignored). Edit it to route different agents to \
+         different models — backend mode only; a config edit, not a code change."
+            .to_string(),
+    );
+    if routing_cfg.user_edited {
+        summary.push(
+            "  ⚠ You edited .devtribunal.yml, so it was not refreshed. Review the latest template \
+             (templates/devtribunal.yml) for new options and merge manually."
+                .to_string(),
+        );
+    }
+    if routing_cfg.unmanaged {
+        summary.push(
+            "  ⚠ .devtribunal.yml carries no devtribunal marker (older version or hand-created), so \
+             it was not overwritten. If you have not customized it, delete it and re-run dt_init."
+                .to_string(),
+        );
     }
 
     if mcp_json_added.is_some() {
@@ -505,5 +613,93 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- Phase 22: routing-config scaffolding ---
+
+    #[test]
+    fn routing_config_is_not_gitignored() {
+        // .devtribunal.yml is version-controlled by design.
+        assert!(!GITIGNORE_ENTRIES.contains(&".devtribunal.yml"));
+        // The three existing entries remain.
+        assert!(GITIGNORE_ENTRIES.contains(&".devtribunal_agents/"));
+        assert!(GITIGNORE_ENTRIES.contains(&".claude/commands/dt/"));
+        assert!(GITIGNORE_ENTRIES.contains(&".devtribunal/"));
+    }
+
+    #[test]
+    fn init_writes_parseable_marked_routing_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_str = dir.path().to_str().unwrap();
+
+        // Explicit language so init proceeds without filesystem detection.
+        let result = execute_init(dir_str, Some(&["rust".to_string()]));
+        assert!(!result.is_error);
+
+        let cfg_path = dir.path().join(".devtribunal.yml");
+        assert!(cfg_path.is_file(), ".devtribunal.yml should be written");
+
+        let on_disk = std::fs::read_to_string(&cfg_path).unwrap();
+        let last = on_disk.trim_end().lines().last().unwrap();
+        assert!(
+            last.starts_with("# dt:managed fnv="),
+            "config must end with a YAML-comment provenance marker, got: {last}"
+        );
+
+        // The marker must NOT break YAML parsing — the Phase-21 parser reads it cleanly.
+        let routing = crate::routing::load_routing(dir_str, true)
+            .expect("scaffolded .devtribunal.yml must parse (marker is a valid YAML comment)");
+        // Behavior-neutral template: no active routes, no default → every agent uses env config.
+        assert!(routing.routes.is_empty(), "template ships with no active routes");
+        assert!(routing.default.is_none(), "template ships with no active default");
+
+        // .devtribunal.yml must not have been added to .gitignore.
+        let gitignore = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap_or_default();
+        assert!(
+            !gitignore.lines().any(|l| l.trim() == ".devtribunal.yml"),
+            ".devtribunal.yml must not be gitignored, .gitignore was:\n{gitignore}"
+        );
+    }
+
+    #[test]
+    fn routing_scaffold_write_refresh_preserve_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join(".devtribunal.yml");
+
+        // 1) First scaffold → written.
+        let first = scaffold_routing_config(dir.path());
+        assert_eq!(first.written, 1);
+        assert_eq!(first.skipped, 0);
+
+        // 2) Re-run unchanged → skipped (current).
+        let second = scaffold_routing_config(dir.path());
+        assert_eq!(second.written, 0);
+        assert_eq!(second.updated, 0);
+        assert_eq!(second.skipped, 1);
+        assert!(!second.user_edited && !second.unmanaged);
+
+        // 3) Pristine-but-stale (older template) → refreshed (UPDATED).
+        std::fs::write(&cfg_path, stamp_routing("# old template\nroutes: {}\n")).unwrap();
+        let third = scaffold_routing_config(dir.path());
+        assert_eq!(third.updated, 1);
+        assert_eq!(
+            std::fs::read_to_string(&cfg_path).unwrap(),
+            stamp_routing(ROUTING_TEMPLATE),
+            "pristine outdated config must be refreshed to the current template"
+        );
+
+        // 4) User-edited (marker present, body changed) → preserved + flagged.
+        let edited = std::fs::read_to_string(&cfg_path).unwrap().replace("routes: {}", "routes: {} # mine");
+        std::fs::write(&cfg_path, &edited).unwrap();
+        let fourth = scaffold_routing_config(dir.path());
+        assert!(fourth.user_edited);
+        assert_eq!(fourth.skipped, 1);
+        assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), edited, "user-edited config must not be overwritten");
+
+        // 5) Unmanaged (no marker) → preserved + flagged.
+        std::fs::write(&cfg_path, "routes: {}\n").unwrap();
+        let fifth = scaffold_routing_config(dir.path());
+        assert!(fifth.unmanaged);
+        assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), "routes: {}\n");
     }
 }

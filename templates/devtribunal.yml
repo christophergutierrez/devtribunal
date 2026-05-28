@@ -1,0 +1,59 @@
+# devtribunal — per-agent model routing
+# ---------------------------------------------------------------------------
+# This file IS meant to be committed (version-controlled). It lets you send
+# different review agents to different models WITHOUT changing any code.
+#
+# Per-agent routing applies in BACKEND MODE only. In host mode (the default)
+# your MCP host runs the review and picks the model, so this file is ignored.
+# Backend mode is selected with the DEVTRIBUNAL_BACKEND environment variable.
+#
+# Providers:
+#   host       no server-side LLM call — the calling host processes the review
+#   anthropic  Anthropic Messages API (model = a Claude model id)
+#   openai     any OpenAI-compatible endpoint:
+#                - keyed:    OpenAI / xAI(Grok) / OpenRouter — set `url` + `key_env`
+#                - keyless:  local Ollama / vLLM / llama.cpp — set `url`, omit `key_env`
+#
+# Per route fields:
+#   provider   host | anthropic | openai      (required)
+#   model      model id to request            (required for anthropic/openai)
+#   url        base URL, e.g. https://api.x.ai/v1 or http://localhost:11434/v1
+#                                              (required for openai)
+#   key_env    NAME of the env var holding the API key (not the key itself)
+#
+# Resolution precedence:  routes[agent]  >  default  >  the server's env config
+#
+# Relevant environment variables (the server's default backend, used as the
+# fallback when this file has no matching route and no `default`):
+#   DEVTRIBUNAL_BACKEND      host | anthropic | api | openai | local
+#   DEVTRIBUNAL_API_KEY      key for anthropic / openai backends
+#   DEVTRIBUNAL_API_URL      base URL for the `openai` backend
+#   DEVTRIBUNAL_MODEL        model id for anthropic / openai backends
+#   DEVTRIBUNAL_LOCAL_URL    base URL for the `local` (keyless OpenAI-compat) backend
+#   DEVTRIBUNAL_LOCAL_MODEL  model id for the `local` backend
+#
+# ---------------------------------------------------------------------------
+# To activate routing, uncomment `default:` and/or entries under `routes:` and
+# delete the empty `routes: {}` line below. Examples:
+#
+# default:
+#   provider: anthropic
+#   model: claude-sonnet-4-20250514
+#   key_env: DEVTRIBUNAL_API_KEY
+#
+# routes:
+#   review_rust:                 # one specialist → xAI Grok (keyed)
+#     provider: openai
+#     model: grok-code
+#     url: https://api.x.ai/v1
+#     key_env: XAI_API_KEY
+#   review_python:               # another specialist → local Ollama (keyless)
+#     provider: openai
+#     model: qwen3:32b
+#     url: http://localhost:11434/v1
+#   architect:                   # let the host pick (no server-side call)
+#     provider: host
+# ---------------------------------------------------------------------------
+
+# No active routes by default — every agent uses the server's env config above.
+routes: {}
