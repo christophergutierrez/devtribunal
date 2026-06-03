@@ -32,7 +32,11 @@ fn parse_gitleaks_json(json_str: &str) -> Vec<SecretFinding> {
     arr.iter()
         .filter_map(|item| {
             let o = item.as_object()?;
-            let file = o.get("File").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let file = o
+                .get("File")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let rule = o
                 .get("RuleID")
                 .and_then(|v| v.as_str())

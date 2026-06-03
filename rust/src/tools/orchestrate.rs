@@ -1,5 +1,5 @@
-use crate::types::AgentDefinition;
 use super::ToolResult;
+use crate::types::AgentDefinition;
 
 fn build_orchestrate_prompt(
     agent: &AgentDefinition,
@@ -38,7 +38,9 @@ pub fn execute_orchestrate(
 ) -> ToolResult {
     if findings.trim().is_empty() {
         return ToolResult {
-            content: "Empty findings string. Expected structured Markdown from specialist agent output.".to_string(),
+            content:
+                "Empty findings string. Expected structured Markdown from specialist agent output."
+                    .to_string(),
             is_error: true,
         };
     }

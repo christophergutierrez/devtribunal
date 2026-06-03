@@ -92,10 +92,18 @@ fn extract_rust_imports(content: &str) -> Vec<ImportStatement> {
     for cap in re.captures_iter(content) {
         let source = cap[1].to_string();
         let symbols = if let Some(group) = cap.get(2) {
-            group.as_str().split(',').map(|s| s.trim().to_string()).collect()
+            group
+                .as_str()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect()
         } else {
             let last = source.rsplit("::").next().unwrap_or("").to_string();
-            if last.is_empty() { Vec::new() } else { vec![last] }
+            if last.is_empty() {
+                Vec::new()
+            } else {
+                vec![last]
+            }
         };
         imports.push(ImportStatement { source, symbols });
     }
@@ -109,11 +117,17 @@ fn extract_ts_imports(content: &str) -> Vec<ImportStatement> {
     let mut imports = Vec::new();
 
     for cap in re.captures_iter(content) {
-        let symbols: Vec<String> = cap[1].split(',').map(|s| {
-            let s = s.trim();
-            s.split(" as ").next().unwrap_or(s).trim().to_string()
-        }).collect();
-        imports.push(ImportStatement { source: cap[2].to_string(), symbols });
+        let symbols: Vec<String> = cap[1]
+            .split(',')
+            .map(|s| {
+                let s = s.trim();
+                s.split(" as ").next().unwrap_or(s).trim().to_string()
+            })
+            .collect();
+        imports.push(ImportStatement {
+            source: cap[2].to_string(),
+            symbols,
+        });
     }
 
     for cap in re_default.captures_iter(content) {
@@ -134,13 +148,20 @@ fn extract_python_imports(content: &str) -> Vec<ImportStatement> {
     for line in content.lines() {
         let trimmed = line.trim();
         if let Some(cap) = re_from.captures(trimmed) {
-            let symbols: Vec<String> = cap[2].split(',')
+            let symbols: Vec<String> = cap[2]
+                .split(',')
                 .map(|s| s.split(" as ").next().unwrap_or("").trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            imports.push(ImportStatement { source: cap[1].to_string(), symbols });
+            imports.push(ImportStatement {
+                source: cap[1].to_string(),
+                symbols,
+            });
         } else if let Some(cap) = re_import.captures(trimmed) {
-            imports.push(ImportStatement { source: cap[1].to_string(), symbols: Vec::new() });
+            imports.push(ImportStatement {
+                source: cap[1].to_string(),
+                symbols: Vec::new(),
+            });
         }
     }
 
@@ -154,12 +175,18 @@ fn extract_go_imports(content: &str) -> Vec<ImportStatement> {
     let mut imports = Vec::new();
 
     for cap in re_single.captures_iter(content) {
-        imports.push(ImportStatement { source: cap[1].to_string(), symbols: Vec::new() });
+        imports.push(ImportStatement {
+            source: cap[1].to_string(),
+            symbols: Vec::new(),
+        });
     }
 
     for cap in re_block.captures_iter(content) {
         for path_cap in re_path.captures_iter(&cap[1]) {
-            imports.push(ImportStatement { source: path_cap[1].to_string(), symbols: Vec::new() });
+            imports.push(ImportStatement {
+                source: path_cap[1].to_string(),
+                symbols: Vec::new(),
+            });
         }
     }
 
@@ -212,20 +239,36 @@ fn extract_error_patterns(content: &str, lang: &str) -> Vec<ErrorPattern> {
 
     match lang {
         "rust" => {
-            if content.contains(".unwrap()") { patterns.push(ErrorPattern::Unwrap); }
-            if content.contains(".expect(") { patterns.push(ErrorPattern::Expect); }
-            if Regex::new(r"\?\s*;|\?\s*$").unwrap().is_match(content) { patterns.push(ErrorPattern::QuestionMark); }
-            if content.contains("panic!(") { patterns.push(ErrorPattern::PanicExplicit); }
+            if content.contains(".unwrap()") {
+                patterns.push(ErrorPattern::Unwrap);
+            }
+            if content.contains(".expect(") {
+                patterns.push(ErrorPattern::Expect);
+            }
+            if Regex::new(r"\?\s*;|\?\s*$").unwrap().is_match(content) {
+                patterns.push(ErrorPattern::QuestionMark);
+            }
+            if content.contains("panic!(") {
+                patterns.push(ErrorPattern::PanicExplicit);
+            }
         }
         "typescript" | "javascript" | "java" | "csharp" | "php" => {
-            if content.contains("try {") || content.contains("try\n") { patterns.push(ErrorPattern::TryCatch); }
-            if content.contains(".unwrap()") { patterns.push(ErrorPattern::Unwrap); } // Rust-in-TS libs
+            if content.contains("try {") || content.contains("try\n") {
+                patterns.push(ErrorPattern::TryCatch);
+            }
+            if content.contains(".unwrap()") {
+                patterns.push(ErrorPattern::Unwrap);
+            } // Rust-in-TS libs
         }
         "go" => {
-            if content.contains("panic(") { patterns.push(ErrorPattern::PanicExplicit); }
+            if content.contains("panic(") {
+                patterns.push(ErrorPattern::PanicExplicit);
+            }
         }
         "python" => {
-            if content.contains("try:") { patterns.push(ErrorPattern::TryCatch); }
+            if content.contains("try:") {
+                patterns.push(ErrorPattern::TryCatch);
+            }
         }
         _ => {}
     }
@@ -241,10 +284,23 @@ fn extract_string_literals(content: &str, lang: &str) -> Vec<(String, u32)> {
     };
 
     let noise: HashSet<&str> = [
-        "utf-8", "utf8", "ascii", "application/json", "text/html",
-        "Content-Type", "content-type", "localhost", "127.0.0.1",
-        "GET", "POST", "PUT", "DELETE", "PATCH",
-    ].into_iter().collect();
+        "utf-8",
+        "utf8",
+        "ascii",
+        "application/json",
+        "text/html",
+        "Content-Type",
+        "content-type",
+        "localhost",
+        "127.0.0.1",
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "PATCH",
+    ]
+    .into_iter()
+    .collect();
 
     let mut literals = Vec::new();
     for (line_num, line) in content.lines().enumerate() {
@@ -267,7 +323,9 @@ fn extract_string_literals(content: &str, lang: &str) -> Vec<(String, u32)> {
 // --- Cycle detection (Tarjan's SCC) ---
 
 fn detect_cycles(files: &[FileMetadata], repo_path: &str) -> Vec<Cycle> {
-    let file_set: HashMap<&str, usize> = files.iter().enumerate()
+    let file_set: HashMap<&str, usize> = files
+        .iter()
+        .enumerate()
         .map(|(i, f)| (f.path.as_str(), i))
         .collect();
 
@@ -308,7 +366,8 @@ fn resolve_import(source: &str, current_file: &str, lang: &str, _repo_path: &str
                 candidates.push(path);
                 // Try as module: src/foo/bar/mod.rs
                 if parts.len() > 1 {
-                    let dir_path = format!("rust/src/{}/mod.rs", parts[..parts.len()-1].join("/"));
+                    let dir_path =
+                        format!("rust/src/{}/mod.rs", parts[..parts.len() - 1].join("/"));
                     candidates.push(dir_path);
                 }
                 return candidates;
@@ -380,7 +439,10 @@ fn tarjan_scc(adj: &[Vec<usize>]) -> Vec<Vec<usize>> {
         index_counter += 1;
         scc_stack.push(start);
         on_stack[start] = true;
-        call_stack.push(Frame { v: start, neighbor_idx: 0 });
+        call_stack.push(Frame {
+            v: start,
+            neighbor_idx: 0,
+        });
 
         while let Some(frame) = call_stack.last_mut() {
             let v = frame.v;
@@ -395,7 +457,10 @@ fn tarjan_scc(adj: &[Vec<usize>]) -> Vec<Vec<usize>> {
                     index_counter += 1;
                     scc_stack.push(w);
                     on_stack[w] = true;
-                    call_stack.push(Frame { v: w, neighbor_idx: 0 });
+                    call_stack.push(Frame {
+                        v: w,
+                        neighbor_idx: 0,
+                    });
                 } else if on_stack[w] {
                     lowlink[v] = lowlink[v].min(index[w]);
                 }
@@ -446,9 +511,14 @@ fn find_dead_exports(files: &[FileMetadata]) -> Vec<DeadExport> {
     for file in files {
         // Skip entry points and test files
         let filename = file.path.rsplit('/').next().unwrap_or(&file.path);
-        if filename == "main.rs" || filename == "main.go" || filename == "main.py"
-            || filename == "mod.rs" || filename == "index.ts" || filename == "index.js"
-            || filename.contains("test") || filename.contains("spec")
+        if filename == "main.rs"
+            || filename == "main.go"
+            || filename == "main.py"
+            || filename == "mod.rs"
+            || filename == "index.ts"
+            || filename == "index.js"
+            || filename.contains("test")
+            || filename.contains("spec")
             || filename == "__init__.py"
         {
             continue;
@@ -464,9 +534,9 @@ fn find_dead_exports(files: &[FileMetadata]) -> Vec<DeadExport> {
                         Ok(r) => r,
                         Err(_) => continue,
                     };
-                    let found_elsewhere = files.iter().any(|other| {
-                        other.path != file.path && re.is_match(&other.content)
-                    });
+                    let found_elsewhere = files
+                        .iter()
+                        .any(|other| other.path != file.path && re.is_match(&other.content));
                     if found_elsewhere {
                         continue;
                     }
@@ -489,7 +559,9 @@ fn find_error_inconsistencies(files: &[FileMetadata]) -> Vec<ErrorInconsistency>
     // Group files by parent directory
     let mut by_dir: HashMap<String, Vec<&FileMetadata>> = HashMap::new();
     for file in files {
-        let dir = file.path.rsplit_once('/')
+        let dir = file
+            .path
+            .rsplit_once('/')
             .map(|(d, _)| d.to_string())
             .unwrap_or_else(|| ".".to_string());
         by_dir.entry(dir).or_default().push(file);
@@ -507,7 +579,9 @@ fn find_error_inconsistencies(files: &[FileMetadata]) -> Vec<ErrorInconsistency>
             if file.error_patterns.is_empty() {
                 continue;
             }
-            let labels: Vec<String> = file.error_patterns.iter()
+            let labels: Vec<String> = file
+                .error_patterns
+                .iter()
                 .map(|p| p.label().to_string())
                 .collect();
             pattern_sets.push((file.path.clone(), labels));
@@ -546,13 +620,15 @@ fn find_duplicated_literals(files: &[FileMetadata]) -> Vec<DuplicatedLiteral> {
 
     for file in files {
         for (val, line) in &file.string_literals {
-            literal_map.entry(val.clone())
+            literal_map
+                .entry(val.clone())
                 .or_default()
                 .push((file.path.clone(), *line));
         }
     }
 
-    let mut duplicated: Vec<DuplicatedLiteral> = literal_map.into_iter()
+    let mut duplicated: Vec<DuplicatedLiteral> = literal_map
+        .into_iter()
         .filter(|(_, occurrences)| {
             let unique_files: HashSet<&str> = occurrences.iter().map(|(f, _)| f.as_str()).collect();
             unique_files.len() >= 3
@@ -574,8 +650,10 @@ fn format_pattern_analysis(result: &PatternAnalysisResult) -> String {
         format!("**Files analyzed:** {}", result.files_analyzed),
     ];
 
-    let total_findings = result.cycles.len() + result.dead_exports.len()
-        + result.error_inconsistencies.len() + result.duplicated_literals.len();
+    let total_findings = result.cycles.len()
+        + result.dead_exports.len()
+        + result.error_inconsistencies.len()
+        + result.duplicated_literals.len();
 
     if total_findings == 0 {
         lines.push(String::new());
@@ -585,11 +663,16 @@ fn format_pattern_analysis(result: &PatternAnalysisResult) -> String {
 
     if !result.cycles.is_empty() {
         lines.push(String::new());
-        lines.push(format!("## Circular Dependencies ({} cycles)", result.cycles.len()));
+        lines.push(format!(
+            "## Circular Dependencies ({} cycles)",
+            result.cycles.len()
+        ));
         for (i, cycle) in result.cycles.iter().enumerate() {
             lines.push(String::new());
             lines.push(format!("### Cycle {} ({} files)", i + 1, cycle.files.len()));
-            let cycle_str = cycle.files.iter()
+            let cycle_str = cycle
+                .files
+                .iter()
                 .map(|f| format!("`{f}`"))
                 .collect::<Vec<_>>()
                 .join(" -> ");
@@ -599,20 +682,29 @@ fn format_pattern_analysis(result: &PatternAnalysisResult) -> String {
 
     if !result.dead_exports.is_empty() {
         lines.push(String::new());
-        lines.push(format!("## Dead Exports ({} symbols)", result.dead_exports.len()));
+        lines.push(format!(
+            "## Dead Exports ({} symbols)",
+            result.dead_exports.len()
+        ));
         lines.push("| Symbol | File |".to_string());
         lines.push("|--------|------|".to_string());
         for d in result.dead_exports.iter().take(30) {
             lines.push(format!("| `{}` | `{}` |", d.symbol, d.file));
         }
         if result.dead_exports.len() > 30 {
-            lines.push(format!("| ... | +{} more |", result.dead_exports.len() - 30));
+            lines.push(format!(
+                "| ... | +{} more |",
+                result.dead_exports.len() - 30
+            ));
         }
     }
 
     if !result.error_inconsistencies.is_empty() {
         lines.push(String::new());
-        lines.push(format!("## Inconsistent Error Handling ({} modules)", result.error_inconsistencies.len()));
+        lines.push(format!(
+            "## Inconsistent Error Handling ({} modules)",
+            result.error_inconsistencies.len()
+        ));
         for inc in &result.error_inconsistencies {
             lines.push(String::new());
             lines.push(format!("### `{}/`", inc.module_path));
@@ -625,7 +717,10 @@ fn format_pattern_analysis(result: &PatternAnalysisResult) -> String {
 
     if !result.duplicated_literals.is_empty() {
         lines.push(String::new());
-        lines.push(format!("## Duplicated Magic Strings ({} strings)", result.duplicated_literals.len()));
+        lines.push(format!(
+            "## Duplicated Magic Strings ({} strings)",
+            result.duplicated_literals.len()
+        ));
         lines.push("| String | Files |".to_string());
         lines.push("|--------|-------|".to_string());
         for d in &result.duplicated_literals {
@@ -634,8 +729,12 @@ fn format_pattern_analysis(result: &PatternAnalysisResult) -> String {
             } else {
                 d.value.clone()
             };
-            let unique_files: HashSet<&str> = d.occurrences.iter().map(|(f, _)| f.as_str()).collect();
-            lines.push(format!("| `{display_val}` | {} files |", unique_files.len()));
+            let unique_files: HashSet<&str> =
+                d.occurrences.iter().map(|(f, _)| f.as_str()).collect();
+            lines.push(format!(
+                "| `{display_val}` | {} files |",
+                unique_files.len()
+            ));
         }
     }
 
@@ -691,7 +790,8 @@ pub async fn execute_check_patterns(repo_path: &str, languages: Option<&[String]
             continue;
         }
 
-        let rel_path = path.strip_prefix(repo)
+        let rel_path = path
+            .strip_prefix(repo)
             .unwrap_or(path)
             .to_string_lossy()
             .to_string();
@@ -769,7 +869,9 @@ mod tests {
         let imports = extract_rust_imports(content);
         assert!(imports.len() >= 2);
         assert!(imports.iter().any(|i| i.source.contains("crate::types")));
-        assert!(imports.iter().any(|i| i.symbols.contains(&"review".to_string())));
+        assert!(imports
+            .iter()
+            .any(|i| i.symbols.contains(&"review".to_string())));
     }
 
     #[test]
@@ -779,7 +881,9 @@ import { Config } from './config';
 import express from 'express';
 "#;
         let imports = extract_ts_imports(content);
-        assert!(imports.iter().any(|i| i.source == "react" && i.symbols.contains(&"useState".to_string())));
+        assert!(imports
+            .iter()
+            .any(|i| i.source == "react" && i.symbols.contains(&"useState".to_string())));
         assert!(imports.iter().any(|i| i.source == "./config"));
         assert!(imports.iter().any(|i| i.source == "express"));
     }
@@ -788,7 +892,9 @@ import express from 'express';
     fn test_extract_python_imports() {
         let content = "from flask import Flask, request\nimport os\nfrom .utils import helper\n";
         let imports = extract_python_imports(content);
-        assert!(imports.iter().any(|i| i.source == "flask" && i.symbols.contains(&"Flask".to_string())));
+        assert!(imports
+            .iter()
+            .any(|i| i.source == "flask" && i.symbols.contains(&"Flask".to_string())));
         assert!(imports.iter().any(|i| i.source == "os"));
         assert!(imports.iter().any(|i| i.source == ".utils"));
     }
@@ -797,15 +903,27 @@ import express from 'express';
     fn test_detect_cycles_simple() {
         let files = vec![
             FileMetadata {
-                path: "src/a.ts".into(), language: "typescript".into(),
-                imports: vec![ImportStatement { source: "./b".into(), symbols: vec!["B".into()] }],
-                exports: vec!["A".into()], error_patterns: Vec::new(), string_literals: Vec::new(),
+                path: "src/a.ts".into(),
+                language: "typescript".into(),
+                imports: vec![ImportStatement {
+                    source: "./b".into(),
+                    symbols: vec!["B".into()],
+                }],
+                exports: vec!["A".into()],
+                error_patterns: Vec::new(),
+                string_literals: Vec::new(),
                 content: String::new(),
             },
             FileMetadata {
-                path: "src/b.ts".into(), language: "typescript".into(),
-                imports: vec![ImportStatement { source: "./a".into(), symbols: vec!["A".into()] }],
-                exports: vec!["B".into()], error_patterns: Vec::new(), string_literals: Vec::new(),
+                path: "src/b.ts".into(),
+                language: "typescript".into(),
+                imports: vec![ImportStatement {
+                    source: "./a".into(),
+                    symbols: vec!["A".into()],
+                }],
+                exports: vec!["B".into()],
+                error_patterns: Vec::new(),
+                string_literals: Vec::new(),
                 content: String::new(),
             },
         ];
@@ -818,17 +936,24 @@ import express from 'express';
     fn test_find_dead_exports() {
         let files = vec![
             FileMetadata {
-                path: "src/utils.ts".into(), language: "typescript".into(),
+                path: "src/utils.ts".into(),
+                language: "typescript".into(),
                 imports: Vec::new(),
                 exports: vec!["usedFunc".into(), "deadFunc".into()],
-                error_patterns: Vec::new(), string_literals: Vec::new(),
+                error_patterns: Vec::new(),
+                string_literals: Vec::new(),
                 content: "export function usedFunc() {}\nexport function deadFunc() {}".into(),
             },
             FileMetadata {
-                path: "src/app.ts".into(), language: "typescript".into(),
-                imports: vec![ImportStatement { source: "./utils".into(), symbols: vec!["usedFunc".into()] }],
+                path: "src/app.ts".into(),
+                language: "typescript".into(),
+                imports: vec![ImportStatement {
+                    source: "./utils".into(),
+                    symbols: vec!["usedFunc".into()],
+                }],
                 exports: Vec::new(),
-                error_patterns: Vec::new(), string_literals: Vec::new(),
+                error_patterns: Vec::new(),
+                string_literals: Vec::new(),
                 content: "import { usedFunc } from './utils';".into(),
             },
         ];
@@ -843,17 +968,21 @@ import express from 'express';
         // The grep-based fallback should prevent false positives in this case.
         let files = vec![
             FileMetadata {
-                path: "src/utils.rs".into(), language: "rust".into(),
+                path: "src/utils.rs".into(),
+                language: "rust".into(),
                 imports: Vec::new(),
                 exports: vec!["helper_func".into(), "truly_dead".into()],
-                error_patterns: Vec::new(), string_literals: Vec::new(),
+                error_patterns: Vec::new(),
+                string_literals: Vec::new(),
                 content: "pub fn helper_func() {}\npub fn truly_dead() {}".into(),
             },
             FileMetadata {
-                path: "src/app.rs".into(), language: "rust".into(),
+                path: "src/app.rs".into(),
+                language: "rust".into(),
                 imports: Vec::new(), // No explicit `use` statement
                 exports: Vec::new(),
-                error_patterns: Vec::new(), string_literals: Vec::new(),
+                error_patterns: Vec::new(),
+                string_literals: Vec::new(),
                 // Uses helper_func via path without importing it
                 content: "fn main() {\n    crate::utils::helper_func();\n}".into(),
             },
@@ -869,20 +998,29 @@ import express from 'express';
     fn test_duplicated_literals() {
         let files = vec![
             FileMetadata {
-                path: "a.rs".into(), language: "rust".into(),
-                imports: Vec::new(), exports: Vec::new(), error_patterns: Vec::new(),
+                path: "a.rs".into(),
+                language: "rust".into(),
+                imports: Vec::new(),
+                exports: Vec::new(),
+                error_patterns: Vec::new(),
                 string_literals: vec![("some_magic_string".into(), 1)],
                 content: String::new(),
             },
             FileMetadata {
-                path: "b.rs".into(), language: "rust".into(),
-                imports: Vec::new(), exports: Vec::new(), error_patterns: Vec::new(),
+                path: "b.rs".into(),
+                language: "rust".into(),
+                imports: Vec::new(),
+                exports: Vec::new(),
+                error_patterns: Vec::new(),
                 string_literals: vec![("some_magic_string".into(), 5)],
                 content: String::new(),
             },
             FileMetadata {
-                path: "c.rs".into(), language: "rust".into(),
-                imports: Vec::new(), exports: Vec::new(), error_patterns: Vec::new(),
+                path: "c.rs".into(),
+                language: "rust".into(),
+                imports: Vec::new(),
+                exports: Vec::new(),
+                error_patterns: Vec::new(),
                 string_literals: vec![("some_magic_string".into(), 10)],
                 content: String::new(),
             },

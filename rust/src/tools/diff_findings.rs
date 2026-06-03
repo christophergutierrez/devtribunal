@@ -122,17 +122,30 @@ fn compute(
         .filter(|f| block_severities.contains(&f.severity))
         .count();
     if open_blocking > 0 {
-        reasons.push(format!("{open_blocking} open finding(s) at blocking severity"));
+        reasons.push(format!(
+            "{open_blocking} open finding(s) at blocking severity"
+        ));
     }
     if !regressed.is_empty() {
         reasons.push(format!("{} regression(s)", regressed.len()));
     }
     if new.len() as u32 > max_new {
-        reasons.push(format!("{} new finding(s) exceed max_new={}", new.len(), max_new));
+        reasons.push(format!(
+            "{} new finding(s) exceed max_new={}",
+            new.len(),
+            max_new
+        ));
     }
     let pass = reasons.is_empty();
 
-    DiffResult { fixed, persisting, new, regressed, pass, reasons }
+    DiffResult {
+        fixed,
+        persisting,
+        new,
+        regressed,
+        pass,
+        reasons,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -146,11 +159,21 @@ pub fn execute_diff_findings(
 ) -> ToolResult {
     let prev = match parse_either(previous) {
         Ok(s) => s,
-        Err(e) => return ToolResult { content: format!("invalid `previous` findings: {e}"), is_error: true },
+        Err(e) => {
+            return ToolResult {
+                content: format!("invalid `previous` findings: {e}"),
+                is_error: true,
+            }
+        }
     };
     let cur = match parse_either(current) {
         Ok(s) => s,
-        Err(e) => return ToolResult { content: format!("invalid `current` findings: {e}"), is_error: true },
+        Err(e) => {
+            return ToolResult {
+                content: format!("invalid `current` findings: {e}"),
+                is_error: true,
+            }
+        }
     };
 
     let block: Vec<Severity> = match block_severities {
@@ -159,7 +182,14 @@ pub fn execute_diff_findings(
     };
     let max_new = max_new.unwrap_or(0);
 
-    let d = compute(&prev.findings, &cur.findings, previously_fixed, overrides, &block, max_new);
+    let d = compute(
+        &prev.findings,
+        &cur.findings,
+        previously_fixed,
+        overrides,
+        &block,
+        max_new,
+    );
 
     let verdict = if d.pass { "pass" } else { "fail" };
     let body = json!({
@@ -180,7 +210,10 @@ pub fn execute_diff_findings(
         if d.reasons.is_empty() { String::new() } else { format!("- **Reasons:** {}", d.reasons.join("; ")) },
         serde_json::to_string_pretty(&body).unwrap_or_default(),
     );
-    ToolResult { content, is_error: false }
+    ToolResult {
+        content,
+        is_error: false,
+    }
 }
 
 #[cfg(test)]
@@ -218,7 +251,14 @@ mod tests {
     fn classifies_fixed_new_persisting() {
         let prev = fset(&mk(&[("a.rs", "A", "low"), ("b.rs", "B", "low")]));
         let cur = fset(&mk(&[("b.rs", "B", "low"), ("c.rs", "C", "low")]));
-        let d = compute(&prev, &cur, &[], &[], &[Severity::Critical, Severity::High], 99);
+        let d = compute(
+            &prev,
+            &cur,
+            &[],
+            &[],
+            &[Severity::Critical, Severity::High],
+            99,
+        );
         assert_eq!(d.fixed.len(), 1); // A gone
         assert_eq!(d.persisting.len(), 1); // B
         assert_eq!(d.new.len(), 1); // C
@@ -238,7 +278,14 @@ mod tests {
     fn verdict_blocks_on_severity() {
         let prev: Vec<Finding> = vec![];
         let cur = fset(&mk(&[("a.rs", "A", "critical")]));
-        let d = compute(&prev, &cur, &[], &[], &[Severity::Critical, Severity::High], 99);
+        let d = compute(
+            &prev,
+            &cur,
+            &[],
+            &[],
+            &[Severity::Critical, Severity::High],
+            99,
+        );
         assert!(!d.pass); // open critical blocks
     }
 
@@ -246,7 +293,14 @@ mod tests {
     fn verdict_passes_when_clean() {
         let prev: Vec<Finding> = vec![];
         let cur = fset(&mk(&[("a.rs", "A", "low")]));
-        let d = compute(&prev, &cur, &[], &[], &[Severity::Critical, Severity::High], 1);
+        let d = compute(
+            &prev,
+            &cur,
+            &[],
+            &[],
+            &[Severity::Critical, Severity::High],
+            1,
+        );
         assert!(d.pass); // low severity, new=1 <= max_new=1, no regressions
     }
 
@@ -262,8 +316,19 @@ mod tests {
     fn override_dismiss_clears_block() {
         let prev: Vec<Finding> = vec![];
         let cur = fset(&mk(&[("a.rs", "A", "critical")]));
-        let ov = vec![Override { finding_id: cur[0].id.clone(), action: "dismiss".into(), new_severity: None }];
-        let d = compute(&prev, &cur, &[], &ov, &[Severity::Critical, Severity::High], 99);
+        let ov = vec![Override {
+            finding_id: cur[0].id.clone(),
+            action: "dismiss".into(),
+            new_severity: None,
+        }];
+        let d = compute(
+            &prev,
+            &cur,
+            &[],
+            &ov,
+            &[Severity::Critical, Severity::High],
+            99,
+        );
         assert!(d.pass); // dismissed critical no longer blocks
         assert!(d.new.is_empty());
     }
@@ -272,8 +337,19 @@ mod tests {
     fn override_downgrade_changes_verdict() {
         let prev: Vec<Finding> = vec![];
         let cur = fset(&mk(&[("a.rs", "A", "critical")]));
-        let ov = vec![Override { finding_id: cur[0].id.clone(), action: "downgrade".into(), new_severity: Some("low".into()) }];
-        let d = compute(&prev, &cur, &[], &ov, &[Severity::Critical, Severity::High], 99);
+        let ov = vec![Override {
+            finding_id: cur[0].id.clone(),
+            action: "downgrade".into(),
+            new_severity: Some("low".into()),
+        }];
+        let d = compute(
+            &prev,
+            &cur,
+            &[],
+            &ov,
+            &[Severity::Critical, Severity::High],
+            99,
+        );
         assert!(d.pass); // downgraded to low, no longer blocking
     }
 

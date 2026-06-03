@@ -8,9 +8,11 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::backend::{self, BackendConfig, Backend};
+use crate::backend::{self, Backend, BackendConfig};
 use crate::routing::{self, RoutingConfig};
-use crate::types::{AgentDefinition, AgentRole, load_embedded_agents, load_agents_from_dir, resolve_agents_dir};
+use crate::types::{
+    load_agents_from_dir, load_embedded_agents, resolve_agents_dir, AgentDefinition, AgentRole,
+};
 
 /// Shared server state.
 struct ServerState {
@@ -52,8 +54,14 @@ pub async fn serve_stdio() -> Result<()> {
     let builtin_agents = load_embedded_agents();
     let backend_config = backend::load_config();
 
-    let specialist_count = builtin_agents.values().filter(|a| a.role == AgentRole::Specialist).count();
-    let orchestrator_count = builtin_agents.values().filter(|a| a.role == AgentRole::Orchestrator).count();
+    let specialist_count = builtin_agents
+        .values()
+        .filter(|a| a.role == AgentRole::Specialist)
+        .count();
+    let orchestrator_count = builtin_agents
+        .values()
+        .filter(|a| a.role == AgentRole::Orchestrator)
+        .count();
     eprintln!(
         "devtribunal v{}\n  {} specialists, {} orchestrators\n  + 10 management tools (dt_init, check_tools, blast_radius, check_tracking, check_deps, check_patterns, check_tests, run_tests, check_secrets, diff_findings)\n  backend: {}",
         env!("CARGO_PKG_VERSION"),
@@ -99,10 +107,7 @@ pub async fn serve_stdio() -> Result<()> {
         };
 
         let id = request.get("id").cloned().unwrap_or(Value::Null);
-        let method = request
-            .get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
+        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
         let response = match method {
             "initialize" => handle_initialize(&id),
@@ -542,20 +547,16 @@ fn mcp_error_result(id: &Value, text: &str) -> Value {
 }
 
 /// Resolve the agent to use for a review: repo-specific override > builtin.
-fn resolve_agent(
-    name: &str,
-    file_path: &str,
-    state: &ServerState,
-) -> Option<AgentDefinition> {
+fn resolve_agent(name: &str, file_path: &str, state: &ServerState) -> Option<AgentDefinition> {
     // Check for repo-level .devtribunal_agents/
     if let Some(agents_dir) = resolve_agents_dir(file_path, false) {
         let mut cache = state.agent_cache.lock().unwrap_or_else(|e| {
             tracing::warn!("agent cache mutex was poisoned, recovering");
             e.into_inner()
         });
-        let repo_agents = cache.entry(agents_dir.clone()).or_insert_with(|| {
-            load_agents_from_dir(&agents_dir).unwrap_or_default()
-        });
+        let repo_agents = cache
+            .entry(agents_dir.clone())
+            .or_insert_with(|| load_agents_from_dir(&agents_dir).unwrap_or_default());
         if let Some(agent) = repo_agents.get(name) {
             return Some(agent.clone());
         }
@@ -565,10 +566,7 @@ fn resolve_agent(
 }
 
 async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Value {
-    let name = params
-        .get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
     // Management tools
@@ -592,9 +590,10 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                     tracing::warn!("agent cache mutex was poisoned, recovering");
                     e.into_inner()
                 });
-                cache.entry(agents_dir.clone()).or_insert_with(|| {
-                    load_agents_from_dir(&agents_dir).unwrap_or_default()
-                }).clone()
+                cache
+                    .entry(agents_dir.clone())
+                    .or_insert_with(|| load_agents_from_dir(&agents_dir).unwrap_or_default())
+                    .clone()
             } else {
                 state.builtin_agents.clone()
             }
@@ -610,7 +609,8 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             Ok(v) => v,
             Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
         };
-        let result = crate::tools::blast_radius::execute_blast_radius(&input.repo_path, &input.scope).await;
+        let result =
+            crate::tools::blast_radius::execute_blast_radius(&input.repo_path, &input.scope).await;
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
@@ -637,7 +637,11 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             Ok(v) => v,
             Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
         };
-        let result = crate::tools::check_patterns::execute_check_patterns(&input.repo_path, input.languages.as_deref()).await;
+        let result = crate::tools::check_patterns::execute_check_patterns(
+            &input.repo_path,
+            input.languages.as_deref(),
+        )
+        .await;
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
@@ -648,7 +652,9 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
         };
         let run = input.run.unwrap_or(false);
         let timeout_secs = input.timeout_secs.unwrap_or(120);
-        let result = crate::tools::check_tests::execute_check_tests(&input.repo_path, run, timeout_secs).await;
+        let result =
+            crate::tools::check_tests::execute_check_tests(&input.repo_path, run, timeout_secs)
+                .await;
         return mcp_result(id, tool_result(&result.content, result.is_error));
     }
 
@@ -704,12 +710,15 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
                 Err(e) => return mcp_error_result(id, &format!("Invalid input: {e}")),
             };
             let agent = if let Some(ref repo_path) = input.repo_path {
-                resolve_agent(name, repo_path, state)
-                    .unwrap_or_else(|| builtin_agent.clone())
+                resolve_agent(name, repo_path, state).unwrap_or_else(|| builtin_agent.clone())
             } else {
                 builtin_agent.clone()
             };
-            let result = crate::tools::orchestrate::execute_orchestrate(&agent, &input.findings, input.context.as_deref());
+            let result = crate::tools::orchestrate::execute_orchestrate(
+                &agent,
+                &input.findings,
+                input.context.as_deref(),
+            );
             if result.is_error {
                 return mcp_result(id, tool_result(&result.content, true));
             }
@@ -758,7 +767,12 @@ async fn handle_call_tool(id: &Value, params: &Value, state: &ServerState) -> Va
             };
             let agent = resolve_agent(name, &input.file_path, state)
                 .unwrap_or_else(|| builtin_agent.clone());
-            let result = crate::tools::review::execute_review(&agent, &input.file_path, input.context.as_deref()).await;
+            let result = crate::tools::review::execute_review(
+                &agent,
+                &input.file_path,
+                input.context.as_deref(),
+            )
+            .await;
 
             if result.is_error {
                 return mcp_result(id, tool_result(&result.content, true));
@@ -834,12 +848,23 @@ mod tests {
             .map(|t| t["name"].as_str().unwrap().to_string())
             .collect();
         for t in [
-            "dt_init", "check_tools", "blast_radius", "check_tracking", "check_deps",
-            "check_patterns", "run_tests", "check_secrets", "diff_findings", "check_tests",
+            "dt_init",
+            "check_tools",
+            "blast_radius",
+            "check_tracking",
+            "check_deps",
+            "check_patterns",
+            "run_tests",
+            "check_secrets",
+            "diff_findings",
+            "check_tests",
         ] {
             assert!(names.contains(&t.to_string()), "tools/list missing {t}");
         }
-        assert!(names.iter().any(|n| n == "review_rust"), "specialists should be registered");
+        assert!(
+            names.iter().any(|n| n == "review_rust"),
+            "specialists should be registered"
+        );
     }
 
     #[tokio::test]
@@ -856,7 +881,10 @@ mod tests {
         let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
         assert_eq!(resp["result"]["isError"].as_bool(), Some(true));
         let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
-        assert!(text.contains("Invalid input"), "expected 'Invalid input', got: {text}");
+        assert!(
+            text.contains("Invalid input"),
+            "expected 'Invalid input', got: {text}"
+        );
     }
 
     // --- Phase 21: per-agent routing applied in dispatch (AC-4) ---
@@ -875,12 +903,19 @@ mod tests {
         let file = dir.path().join("foo.rs");
         std::fs::write(&file, "fn main() {}\n").unwrap();
 
-        let params = json!({ "name": "review_rust", "arguments": { "file_path": file.to_str().unwrap() } });
+        let params =
+            json!({ "name": "review_rust", "arguments": { "file_path": file.to_str().unwrap() } });
         let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
         assert_eq!(resp["result"]["isError"].as_bool(), Some(false));
         let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
-        assert!(text.contains("degraded to host mode"), "expected routing warning, got: {text}");
-        assert!(text.contains("review_rust"), "warning should name the agent, got: {text}");
+        assert!(
+            text.contains("degraded to host mode"),
+            "expected routing warning, got: {text}"
+        );
+        assert!(
+            text.contains("review_rust"),
+            "warning should name the agent, got: {text}"
+        );
     }
 
     #[tokio::test]
@@ -901,8 +936,14 @@ mod tests {
         let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
         assert_eq!(resp["result"]["isError"].as_bool(), Some(false));
         let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
-        assert!(text.contains("degraded to host mode"), "expected routing warning, got: {text}");
-        assert!(text.contains("architect"), "warning should name the agent, got: {text}");
+        assert!(
+            text.contains("degraded to host mode"),
+            "expected routing warning, got: {text}"
+        );
+        assert!(
+            text.contains("architect"),
+            "warning should name the agent, got: {text}"
+        );
     }
 
     #[tokio::test]
@@ -915,6 +956,9 @@ mod tests {
         });
         let resp = handle_call_tool(&json!(1), &params, &test_state()).await;
         let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
-        assert!(!text.contains("degraded to host mode"), "no config => no routing warning, got: {text}");
+        assert!(
+            !text.contains("degraded to host mode"),
+            "no config => no routing warning, got: {text}"
+        );
     }
 }

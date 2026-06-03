@@ -65,11 +65,7 @@ pub struct ExecResult {
 /// Safe wrapper around tokio::process::Command.
 /// Does NOT invoke a shell — arguments are passed directly to the process.
 /// On timeout the child process is explicitly killed to avoid zombie processes.
-pub async fn safe_exec(
-    bin: &str,
-    args: &[String],
-    timeout: Duration,
-) -> ExecResult {
+pub async fn safe_exec(bin: &str, args: &[String], timeout: Duration) -> ExecResult {
     exec_impl(bin, args, None, timeout).await
 }
 
@@ -97,8 +93,7 @@ async fn exec_impl(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let mut child = match cmd.spawn()
-    {
+    let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
             return ExecResult {
@@ -200,7 +195,12 @@ mod tests {
         assert_eq!(bin, "npx");
         assert_eq!(
             args,
-            vec!["eslint", "--format", "json", "/Users/John Smith/project/file.ts"]
+            vec![
+                "eslint",
+                "--format",
+                "json",
+                "/Users/John Smith/project/file.ts"
+            ]
         );
     }
 
@@ -220,7 +220,12 @@ mod tests {
         assert_eq!(bin, "ruff");
         assert_eq!(
             args,
-            vec!["check", "--output-format", "json", "/path with spaces/test.py"]
+            vec![
+                "check",
+                "--output-format",
+                "json",
+                "/path with spaces/test.py"
+            ]
         );
     }
 }

@@ -90,17 +90,29 @@ fn extract_symbols_from_diff(diff: &str, file_path: &str) -> Vec<ExtractedSymbol
 fn symbol_patterns(lang: &str) -> Vec<(&'static str, Regex)> {
     match lang {
         "rust" => vec![
-            ("function", Regex::new(r"pub\s+(?:async\s+)?fn\s+(\w+)").unwrap()),
+            (
+                "function",
+                Regex::new(r"pub\s+(?:async\s+)?fn\s+(\w+)").unwrap(),
+            ),
             ("struct", Regex::new(r"pub\s+struct\s+(\w+)").unwrap()),
             ("enum", Regex::new(r"pub\s+enum\s+(\w+)").unwrap()),
             ("trait", Regex::new(r"pub\s+trait\s+(\w+)").unwrap()),
             ("type", Regex::new(r"pub\s+type\s+(\w+)").unwrap()),
         ],
         "typescript" | "javascript" => vec![
-            ("function", Regex::new(r"export\s+(?:async\s+)?function\s+(\w+)").unwrap()),
+            (
+                "function",
+                Regex::new(r"export\s+(?:async\s+)?function\s+(\w+)").unwrap(),
+            ),
             ("class", Regex::new(r"export\s+class\s+(\w+)").unwrap()),
-            ("const", Regex::new(r"export\s+(?:const|let|var)\s+(\w+)").unwrap()),
-            ("interface", Regex::new(r"export\s+interface\s+(\w+)").unwrap()),
+            (
+                "const",
+                Regex::new(r"export\s+(?:const|let|var)\s+(\w+)").unwrap(),
+            ),
+            (
+                "interface",
+                Regex::new(r"export\s+interface\s+(\w+)").unwrap(),
+            ),
             ("type", Regex::new(r"export\s+type\s+(\w+)").unwrap()),
             ("enum", Regex::new(r"export\s+enum\s+(\w+)").unwrap()),
         ],
@@ -109,28 +121,56 @@ fn symbol_patterns(lang: &str) -> Vec<(&'static str, Regex)> {
             ("class", Regex::new(r"^class\s+(\w+)").unwrap()),
         ],
         "go" => vec![
-            ("function", Regex::new(r"^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)").unwrap()),
+            (
+                "function",
+                Regex::new(r"^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)").unwrap(),
+            ),
             ("type", Regex::new(r"^type\s+([A-Z]\w*)").unwrap()),
         ],
         "java" => vec![
-            ("class", Regex::new(r"public\s+(?:abstract\s+)?class\s+(\w+)").unwrap()),
-            ("interface", Regex::new(r"public\s+interface\s+(\w+)").unwrap()),
-            ("method", Regex::new(r"public\s+(?:static\s+)?(?:\w+\s+)+(\w+)\s*\(").unwrap()),
+            (
+                "class",
+                Regex::new(r"public\s+(?:abstract\s+)?class\s+(\w+)").unwrap(),
+            ),
+            (
+                "interface",
+                Regex::new(r"public\s+interface\s+(\w+)").unwrap(),
+            ),
+            (
+                "method",
+                Regex::new(r"public\s+(?:static\s+)?(?:\w+\s+)+(\w+)\s*\(").unwrap(),
+            ),
         ],
         "php" => vec![
-            ("function", Regex::new(r"(?:public|protected)\s+function\s+(\w+)").unwrap()),
+            (
+                "function",
+                Regex::new(r"(?:public|protected)\s+function\s+(\w+)").unwrap(),
+            ),
             ("class", Regex::new(r"class\s+(\w+)").unwrap()),
         ],
         "csharp" => vec![
-            ("class", Regex::new(r"public\s+(?:partial\s+)?class\s+(\w+)").unwrap()),
-            ("method", Regex::new(r"public\s+(?:static\s+)?(?:async\s+)?\w+\s+(\w+)\s*\(").unwrap()),
-            ("interface", Regex::new(r"public\s+interface\s+(\w+)").unwrap()),
+            (
+                "class",
+                Regex::new(r"public\s+(?:partial\s+)?class\s+(\w+)").unwrap(),
+            ),
+            (
+                "method",
+                Regex::new(r"public\s+(?:static\s+)?(?:async\s+)?\w+\s+(\w+)\s*\(").unwrap(),
+            ),
+            (
+                "interface",
+                Regex::new(r"public\s+interface\s+(\w+)").unwrap(),
+            ),
         ],
         _ => Vec::new(),
     }
 }
 
-fn scan_file_for_references(content: &str, symbols: &[ExtractedSymbol], compiled_regexes: &[Regex]) -> Vec<String> {
+fn scan_file_for_references(
+    content: &str,
+    symbols: &[ExtractedSymbol],
+    compiled_regexes: &[Regex],
+) -> Vec<String> {
     let mut found = Vec::new();
     for (sym, re) in symbols.iter().zip(compiled_regexes.iter()) {
         if re.is_match(content) {
@@ -205,31 +245,53 @@ pub async fn execute_blast_radius(repo_path: &str, scope: &str) -> ToolResult {
 
     // Get changed file list
     let name_args = scope_to_diff_name_args(scope);
-    let result = safe_exec("git", &[
-        vec!["-C".to_string(), repo_path.to_string()],
-        name_args,
-    ].concat(), GIT_TIMEOUT).await;
+    let result = safe_exec(
+        "git",
+        &[vec!["-C".to_string(), repo_path.to_string()], name_args].concat(),
+        GIT_TIMEOUT,
+    )
+    .await;
 
     if result.exit_code != 0 {
         // Try fallback for unpushed: origin/main..HEAD
         if scope == "unpushed" {
-            let fallback = safe_exec("git", &[
-                "-C".to_string(), repo_path.to_string(),
-                "log".to_string(), "--name-only".to_string(),
-                "--pretty=format:".to_string(), "origin/main..HEAD".to_string(),
-            ], GIT_TIMEOUT).await;
+            let fallback = safe_exec(
+                "git",
+                &[
+                    "-C".to_string(),
+                    repo_path.to_string(),
+                    "log".to_string(),
+                    "--name-only".to_string(),
+                    "--pretty=format:".to_string(),
+                    "origin/main..HEAD".to_string(),
+                ],
+                GIT_TIMEOUT,
+            )
+            .await;
             if fallback.exit_code != 0 {
                 return ToolResult {
-                    content: format!("git diff failed: {}. Ensure the scope is valid and remote is set.", result.stderr.trim()),
+                    content: format!(
+                        "git diff failed: {}. Ensure the scope is valid and remote is set.",
+                        result.stderr.trim()
+                    ),
                     is_error: true,
                 };
             }
             // Use fallback result below
-            let changed_files: Vec<String> = fallback.stdout.lines()
+            let changed_files: Vec<String> = fallback
+                .stdout
+                .lines()
                 .filter(|l| !l.is_empty())
                 .map(|l| l.to_string())
                 .collect();
-            return execute_with_files(repo_path, scope, &changed_files, "origin/main..HEAD", &mut errors).await;
+            return execute_with_files(
+                repo_path,
+                scope,
+                &changed_files,
+                "origin/main..HEAD",
+                &mut errors,
+            )
+            .await;
         }
         return ToolResult {
             content: format!("git diff failed: {}", result.stderr.trim()),
@@ -237,7 +299,9 @@ pub async fn execute_blast_radius(repo_path: &str, scope: &str) -> ToolResult {
         };
     }
 
-    let changed_files: Vec<String> = result.stdout.lines()
+    let changed_files: Vec<String> = result
+        .stdout
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
         .collect();
@@ -274,10 +338,12 @@ async fn execute_with_files(
 
     // Get full diff for symbol extraction
     let diff_args = scope_to_diff_args(diff_ref);
-    let diff_result = safe_exec("git", &[
-        vec!["-C".to_string(), repo_path.to_string()],
-        diff_args,
-    ].concat(), GIT_TIMEOUT).await;
+    let diff_result = safe_exec(
+        "git",
+        &[vec!["-C".to_string(), repo_path.to_string()], diff_args].concat(),
+        GIT_TIMEOUT,
+    )
+    .await;
 
     let mut all_symbols = Vec::new();
 
@@ -305,7 +371,10 @@ async fn execute_with_files(
             all_symbols.extend(extract_symbols_from_diff(&current_chunk, &current_file));
         }
     } else {
-        errors.push(format!("Could not get full diff: {}", diff_result.stderr.trim()));
+        errors.push(format!(
+            "Could not get full diff: {}",
+            diff_result.stderr.trim()
+        ));
     }
 
     // Scan repo for dependents
@@ -329,7 +398,10 @@ async fn execute_with_files(
             // Rebuild with only successfully compiled pairs
             // This shouldn't happen in practice since symbol names are word chars
             errors.push("Some symbol regexes failed to compile".to_string());
-            (&all_symbols[..compiled_regexes.len()], &compiled_regexes[..])
+            (
+                &all_symbols[..compiled_regexes.len()],
+                &compiled_regexes[..],
+            )
         };
 
         let repo_path_obj = Path::new(repo_path);
@@ -355,7 +427,8 @@ async fn execute_with_files(
                 continue;
             }
 
-            let rel_path = path.strip_prefix(repo_path_obj)
+            let rel_path = path
+                .strip_prefix(repo_path_obj)
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
@@ -466,8 +539,16 @@ mod tests {
     fn test_scan_references() {
         let content = "use crate::types::AgentDefinition;\nlet agent: AgentDefinition = todo!();";
         let symbols = vec![
-            ExtractedSymbol { name: "AgentDefinition".into(), kind: "struct", file: "types.rs".into() },
-            ExtractedSymbol { name: "UnusedThing".into(), kind: "struct", file: "types.rs".into() },
+            ExtractedSymbol {
+                name: "AgentDefinition".into(),
+                kind: "struct",
+                file: "types.rs".into(),
+            },
+            ExtractedSymbol {
+                name: "UnusedThing".into(),
+                kind: "struct",
+                file: "types.rs".into(),
+            },
         ];
         let compiled_regexes: Vec<Regex> = symbols
             .iter()

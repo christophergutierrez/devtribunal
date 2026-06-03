@@ -78,7 +78,11 @@ fn classify_file(rel_path: &str, language: &str, content: &str) -> ClassifiedFil
     ClassifiedFile {
         rel_path: rel_path.to_string(),
         language: language.to_string(),
-        kind: if is_test { FileKind::TestFile } else { FileKind::Source },
+        kind: if is_test {
+            FileKind::TestFile
+        } else {
+            FileKind::Source
+        },
         has_inline_tests,
     }
 }
@@ -246,7 +250,10 @@ fn parse_cargo_test_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRu
     }
 
     let status = if failed > 0 {
-        format!("FAILED ({failed} failure{})", if failed == 1 { "" } else { "s" })
+        format!(
+            "FAILED ({failed} failure{})",
+            if failed == 1 { "" } else { "s" }
+        )
     } else if exit_code != 0 {
         // Non-zero exit with no parsed failures means the runner itself errored
         // (compile error, bad flag, etc.). Never report PASSED in that case.
@@ -260,7 +267,11 @@ fn parse_cargo_test_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRu
         passed,
         failed,
         duration,
-        failures: if detailed_failures.is_empty() { failures.iter().map(|f| format!("`{f}`")).collect() } else { detailed_failures },
+        failures: if detailed_failures.is_empty() {
+            failures.iter().map(|f| format!("`{f}`")).collect()
+        } else {
+            detailed_failures
+        },
         raw_output: combined,
     }
 }
@@ -296,7 +307,10 @@ fn parse_pytest_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRunRes
     }
 
     let status = if exit_code != 0 || failed > 0 {
-        format!("FAILED ({failed} failure{})", if failed == 1 { "" } else { "s" })
+        format!(
+            "FAILED ({failed} failure{})",
+            if failed == 1 { "" } else { "s" }
+        )
     } else {
         "PASSED".to_string()
     };
@@ -337,12 +351,18 @@ fn parse_npm_test_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRunR
         }
         // FAIL src/foo.test.ts
         if line.starts_with("FAIL ") || line.starts_with("  FAIL ") {
-            failures.push(format!("`{}`", line.trim().trim_start_matches("FAIL ").trim()));
+            failures.push(format!(
+                "`{}`",
+                line.trim().trim_start_matches("FAIL ").trim()
+            ));
         }
     }
 
     let status = if exit_code != 0 || failed > 0 {
-        format!("FAILED ({failed} failure{})", if failed == 1 { "" } else { "s" })
+        format!(
+            "FAILED ({failed} failure{})",
+            if failed == 1 { "" } else { "s" }
+        )
     } else {
         "PASSED".to_string()
     };
@@ -369,8 +389,13 @@ fn parse_go_test_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRunRe
         let trimmed = line.trim();
         // ok  \tpackage/name\t0.123s  (tab-separated)
         // ok   package/name  0.123s   (space-separated)
-        if trimmed.starts_with("ok") && trimmed.len() > 3
-            && trimmed.as_bytes().get(2).map(|b| b.is_ascii_whitespace()).unwrap_or(false)
+        if trimmed.starts_with("ok")
+            && trimmed.len() > 3
+            && trimmed
+                .as_bytes()
+                .get(2)
+                .map(|b| b.is_ascii_whitespace())
+                .unwrap_or(false)
         {
             passed += 1;
             if let Some(d) = extract_go_duration(trimmed) {
@@ -400,7 +425,10 @@ fn parse_go_test_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRunRe
     }
 
     let status = if exit_code != 0 || failed > 0 {
-        format!("FAILED ({failed} package{})", if failed == 1 { "" } else { "s" })
+        format!(
+            "FAILED ({failed} package{})",
+            if failed == 1 { "" } else { "s" }
+        )
     } else {
         "PASSED".to_string()
     };
@@ -432,7 +460,14 @@ fn parse_generic_output(stdout: &str, stderr: &str, exit_code: i32) -> TestRunRe
 fn extract_number_before(line: &str, suffix: &str) -> Option<u32> {
     if let Some(idx) = line.find(suffix) {
         let before = &line[..idx];
-        let num_str: String = before.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
+        let num_str: String = before
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
         num_str.parse().ok()
     } else {
         None
@@ -480,7 +515,12 @@ fn compute_gaps(files: &[ClassifiedFile]) -> Vec<TestGap> {
         let has_corresponding_test = match src.language.as_str() {
             "rust" => {
                 let stem = src.rel_path.trim_end_matches(".rs");
-                let basename = src.rel_path.rsplit('/').next().unwrap_or(&src.rel_path).trim_end_matches(".rs");
+                let basename = src
+                    .rel_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&src.rel_path)
+                    .trim_end_matches(".rs");
                 test_paths.iter().any(|t| {
                     t.contains(&format!("{basename}_test"))
                         || t.contains(&format!("test_{basename}"))
@@ -490,18 +530,23 @@ fn compute_gaps(files: &[ClassifiedFile]) -> Vec<TestGap> {
                 })
             }
             "typescript" | "javascript" => {
-                let stem = src.rel_path
+                let stem = src
+                    .rel_path
                     .trim_end_matches(".ts")
                     .trim_end_matches(".tsx")
                     .trim_end_matches(".js")
                     .trim_end_matches(".jsx");
                 test_paths.iter().any(|t| {
-                    t.contains(&format!("{stem}.test."))
-                        || t.contains(&format!("{stem}.spec."))
+                    t.contains(&format!("{stem}.test.")) || t.contains(&format!("{stem}.spec."))
                 })
             }
             "python" => {
-                let basename = src.rel_path.rsplit('/').next().unwrap_or(&src.rel_path).trim_end_matches(".py");
+                let basename = src
+                    .rel_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&src.rel_path)
+                    .trim_end_matches(".py");
                 let dir = src.rel_path.rsplit_once('/').map(|(d, _)| d).unwrap_or(".");
                 test_paths.iter().any(|t| {
                     t.contains(&format!("test_{basename}"))
@@ -511,18 +556,32 @@ fn compute_gaps(files: &[ClassifiedFile]) -> Vec<TestGap> {
             }
             "go" => {
                 let test_file = src.rel_path.trim_end_matches(".go");
-                test_paths.iter().any(|t| *t == format!("{test_file}_test.go"))
+                test_paths
+                    .iter()
+                    .any(|t| *t == format!("{test_file}_test.go"))
             }
             "java" => {
-                let basename = src.rel_path.rsplit('/').next().unwrap_or(&src.rel_path).trim_end_matches(".java");
+                let basename = src
+                    .rel_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&src.rel_path)
+                    .trim_end_matches(".java");
                 test_paths.iter().any(|t| {
                     t.contains(&format!("{basename}Test.java"))
                         || t.contains(&format!("{basename}Tests.java"))
                 })
             }
             "php" => {
-                let basename = src.rel_path.rsplit('/').next().unwrap_or(&src.rel_path).trim_end_matches(".php");
-                test_paths.iter().any(|t| t.contains(&format!("{basename}Test.php")))
+                let basename = src
+                    .rel_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&src.rel_path)
+                    .trim_end_matches(".php");
+                test_paths
+                    .iter()
+                    .any(|t| t.contains(&format!("{basename}Test.php")))
             }
             _ => true, // Skip unknown languages
         };
@@ -548,12 +607,20 @@ fn suggest_test_file(source_path: &str, language: &str) -> String {
         }
         "typescript" => {
             let stem = basename.trim_end_matches(".ts").trim_end_matches(".tsx");
-            let ext = if basename.ends_with(".tsx") { "tsx" } else { "ts" };
+            let ext = if basename.ends_with(".tsx") {
+                "tsx"
+            } else {
+                "ts"
+            };
             format!("{stem}.test.{ext}")
         }
         "javascript" => {
             let stem = basename.trim_end_matches(".js").trim_end_matches(".jsx");
-            let ext = if basename.ends_with(".jsx") { "jsx" } else { "js" };
+            let ext = if basename.ends_with(".jsx") {
+                "jsx"
+            } else {
+                "js"
+            };
             format!("{stem}.test.{ext}")
         }
         "python" => {
@@ -585,8 +652,14 @@ fn format_output(
     test_result: Option<&TestRunResult>,
 ) -> String {
     let source_count = files.iter().filter(|f| f.kind == FileKind::Source).count();
-    let test_count = files.iter().filter(|f| f.kind == FileKind::TestFile).count();
-    let inline_count = files.iter().filter(|f| f.kind == FileKind::Source && f.has_inline_tests).count();
+    let test_count = files
+        .iter()
+        .filter(|f| f.kind == FileKind::TestFile)
+        .count();
+    let inline_count = files
+        .iter()
+        .filter(|f| f.kind == FileKind::Source && f.has_inline_tests)
+        .count();
 
     let modules_with_tests = source_count.saturating_sub(gaps.len());
     let coverage_pct = if source_count > 0 {
@@ -595,7 +668,10 @@ fn format_output(
         100
     };
 
-    let runner_name = runner.as_ref().map(|r| r.name.as_str()).unwrap_or("none detected");
+    let runner_name = runner
+        .as_ref()
+        .map(|r| r.name.as_str())
+        .unwrap_or("none detected");
 
     let mut lines = vec![
         "## Test Adequacy".to_string(),
@@ -605,10 +681,14 @@ fn format_output(
     ];
 
     if inline_count > 0 {
-        lines.push(format!("- **Inline test modules:** {inline_count} (Rust #[cfg(test)])"));
+        lines.push(format!(
+            "- **Inline test modules:** {inline_count} (Rust #[cfg(test)])"
+        ));
     }
 
-    lines.push(format!("- **Coverage ratio:** {coverage_pct}% of modules have tests"));
+    lines.push(format!(
+        "- **Coverage ratio:** {coverage_pct}% of modules have tests"
+    ));
     lines.push(format!("- **Detected runner:** {runner_name}"));
 
     if !gaps.is_empty() {
@@ -618,7 +698,10 @@ fn format_output(
         lines.push("| Module | Suggested Test |".to_string());
         lines.push("|--------|---------------|".to_string());
         for gap in gaps.iter().take(30) {
-            lines.push(format!("| `{}` | {} |", gap.source_path, gap.suggested_test));
+            lines.push(format!(
+                "| `{}` | {} |",
+                gap.source_path, gap.suggested_test
+            ));
         }
         if gaps.len() > 30 {
             lines.push(format!("| ... | +{} more |", gaps.len() - 30));
@@ -659,7 +742,10 @@ fn format_output(
                 lines.push(format!("{}. {failure}", i + 1));
             }
             if result.failures.len() > 20 {
-                lines.push(format!("\n... and {} more failures", result.failures.len() - 20));
+                lines.push(format!(
+                    "\n... and {} more failures",
+                    result.failures.len() - 20
+                ));
             }
         }
 
@@ -688,17 +774,23 @@ fn generate_recommendations(files: &[ClassifiedFile], gaps: &[TestGap]) -> Vec<S
     // Group gaps by directory
     let mut dir_gaps: HashMap<&str, Vec<&TestGap>> = HashMap::new();
     for gap in gaps {
-        let dir = gap.source_path.rsplit_once('/').map(|(d, _)| d).unwrap_or(".");
+        let dir = gap
+            .source_path
+            .rsplit_once('/')
+            .map(|(d, _)| d)
+            .unwrap_or(".");
         dir_gaps.entry(dir).or_default().push(gap);
     }
 
     // Find directories with many untested files
-    let mut sorted_dirs: Vec<(&str, &Vec<&TestGap>)> = dir_gaps.iter().map(|(k, v)| (*k, v)).collect();
+    let mut sorted_dirs: Vec<(&str, &Vec<&TestGap>)> =
+        dir_gaps.iter().map(|(k, v)| (*k, v)).collect();
     sorted_dirs.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
 
     for (dir, dir_gap_list) in sorted_dirs.iter().take(5) {
         if dir_gap_list.len() >= 2 {
-            let file_names: Vec<&str> = dir_gap_list.iter()
+            let file_names: Vec<&str> = dir_gap_list
+                .iter()
                 .take(3)
                 .map(|g| g.source_path.rsplit('/').next().unwrap_or(&g.source_path))
                 .collect();
@@ -711,7 +803,8 @@ fn generate_recommendations(files: &[ClassifiedFile], gaps: &[TestGap]) -> Vec<S
     }
 
     // Highlight individual complex files (those with inline tests should still have integration tests)
-    let source_with_inline: Vec<&ClassifiedFile> = files.iter()
+    let source_with_inline: Vec<&ClassifiedFile> = files
+        .iter()
         .filter(|f| f.kind == FileKind::Source && f.has_inline_tests)
         .collect();
 
@@ -827,11 +920,31 @@ pub async fn execute_check_tests(repo_path: &str, run: bool, timeout_secs: u64) 
                 };
 
                 let parsed = match r.name.as_str() {
-                    "cargo test" => parse_cargo_test_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
-                    "pytest" => parse_pytest_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
-                    "npm test" | "yarn test" | "pnpm test" => parse_npm_test_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
-                    "go test" => parse_go_test_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
-                    _ => parse_generic_output(&exec_result.stdout, &exec_result.stderr, exec_result.exit_code),
+                    "cargo test" => parse_cargo_test_output(
+                        &exec_result.stdout,
+                        &exec_result.stderr,
+                        exec_result.exit_code,
+                    ),
+                    "pytest" => parse_pytest_output(
+                        &exec_result.stdout,
+                        &exec_result.stderr,
+                        exec_result.exit_code,
+                    ),
+                    "npm test" | "yarn test" | "pnpm test" => parse_npm_test_output(
+                        &exec_result.stdout,
+                        &exec_result.stderr,
+                        exec_result.exit_code,
+                    ),
+                    "go test" => parse_go_test_output(
+                        &exec_result.stdout,
+                        &exec_result.stderr,
+                        exec_result.exit_code,
+                    ),
+                    _ => parse_generic_output(
+                        &exec_result.stdout,
+                        &exec_result.stderr,
+                        exec_result.exit_code,
+                    ),
                 };
 
                 Some(parsed)
@@ -870,7 +983,11 @@ mod tests {
 
     #[test]
     fn test_classify_rust_inline_tests() {
-        let f = classify_file("src/main.rs", "rust", "#[cfg(test)]\nmod tests { #[test] fn it_works() {} }");
+        let f = classify_file(
+            "src/main.rs",
+            "rust",
+            "#[cfg(test)]\nmod tests { #[test] fn it_works() {} }",
+        );
         assert_eq!(f.kind, FileKind::Source);
         assert!(f.has_inline_tests);
     }
@@ -968,7 +1085,11 @@ mod tests {
     #[test]
     fn test_detect_runner_npm() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("package.json"), r#"{"scripts": {"test": "jest"}}"#).unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts": {"test": "jest"}}"#,
+        )
+        .unwrap();
         let runner = detect_test_runner(dir.path()).unwrap();
         assert_eq!(runner.command, "npm test");
     }
@@ -976,7 +1097,11 @@ mod tests {
     #[test]
     fn test_detect_runner_yarn() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("package.json"), r#"{"scripts": {"test": "jest"}}"#).unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts": {"test": "jest"}}"#,
+        )
+        .unwrap();
         std::fs::write(dir.path().join("yarn.lock"), "").unwrap();
         let runner = detect_test_runner(dir.path()).unwrap();
         assert_eq!(runner.command, "yarn test");
@@ -1008,8 +1133,14 @@ mod tests {
 
     #[test]
     fn test_extract_number_before() {
-        assert_eq!(extract_number_before("test result: ok. 48 passed; 2 failed", " passed"), Some(48));
-        assert_eq!(extract_number_before("test result: ok. 48 passed; 2 failed", " failed"), Some(2));
+        assert_eq!(
+            extract_number_before("test result: ok. 48 passed; 2 failed", " passed"),
+            Some(48)
+        );
+        assert_eq!(
+            extract_number_before("test result: ok. 48 passed; 2 failed", " failed"),
+            Some(2)
+        );
         assert_eq!(extract_number_before("no match here", " passed"), None);
     }
 
@@ -1039,7 +1170,11 @@ mod tests {
         // must NOT be reported as PASSED.
         let stderr = "error: the `-C` flag is unstable, pass `-Z unstable-options`\n";
         let result = parse_cargo_test_output("", stderr, 1);
-        assert!(result.status.starts_with("FAILED"), "errored runner must be FAILED, got {:?}", result.status);
+        assert!(
+            result.status.starts_with("FAILED"),
+            "errored runner must be FAILED, got {:?}",
+            result.status
+        );
         assert_eq!(result.passed, 0);
     }
 
@@ -1053,12 +1188,18 @@ mod tests {
 
     #[test]
     fn test_suggest_test_file_rust() {
-        assert_eq!(suggest_test_file("src/main.rs", "rust"), "tests/main_test.rs or inline #[cfg(test)]");
+        assert_eq!(
+            suggest_test_file("src/main.rs", "rust"),
+            "tests/main_test.rs or inline #[cfg(test)]"
+        );
     }
 
     #[test]
     fn test_suggest_test_file_typescript() {
-        assert_eq!(suggest_test_file("src/utils.ts", "typescript"), "utils.test.ts");
+        assert_eq!(
+            suggest_test_file("src/utils.ts", "typescript"),
+            "utils.test.ts"
+        );
     }
 
     #[test]
@@ -1100,14 +1241,12 @@ mod tests {
 
     #[test]
     fn test_compute_gaps_missing() {
-        let files = vec![
-            ClassifiedFile {
-                rel_path: "src/orphan.rs".to_string(),
-                language: "rust".to_string(),
-                kind: FileKind::Source,
-                has_inline_tests: false,
-            },
-        ];
+        let files = vec![ClassifiedFile {
+            rel_path: "src/orphan.rs".to_string(),
+            language: "rust".to_string(),
+            kind: FileKind::Source,
+            has_inline_tests: false,
+        }];
         let gaps = compute_gaps(&files);
         assert_eq!(gaps.len(), 1);
         assert_eq!(gaps[0].source_path, "src/orphan.rs");

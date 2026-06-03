@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use super::ToolResult;
 use crate::runner::check_tool_available;
 use crate::types::AgentDefinition;
-use super::ToolResult;
 
 struct ToolCheckResult {
     tool: String,

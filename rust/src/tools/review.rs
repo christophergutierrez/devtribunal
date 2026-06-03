@@ -1,6 +1,6 @@
 use crate::lang::language_for_path;
-use crate::types::AgentDefinition;
 use crate::tools::linter;
+use crate::types::AgentDefinition;
 
 pub use super::ToolResult;
 

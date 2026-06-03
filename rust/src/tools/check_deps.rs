@@ -129,7 +129,8 @@ fn detect_lockfiles(repo_path: &Path) -> Vec<(String, String)> {
         ("Pipfile.lock", "PyPI"),
     ];
 
-    candidates.iter()
+    candidates
+        .iter()
         .filter(|(name, _)| repo_path.join(name).exists())
         .map(|(name, eco)| (name.to_string(), eco.to_string()))
         .collect()
@@ -144,7 +145,11 @@ fn parse_cargo_lock(content: &str) -> Vec<Dependency> {
         let trimmed = line.trim();
         if trimmed == "[[package]]" {
             if let (Some(name), Some(version)) = (current_name.take(), current_version.take()) {
-                deps.push(Dependency { name, version, ecosystem: "crates.io".into() });
+                deps.push(Dependency {
+                    name,
+                    version,
+                    ecosystem: "crates.io".into(),
+                });
             }
             current_name = None;
             current_version = None;
@@ -156,7 +161,11 @@ fn parse_cargo_lock(content: &str) -> Vec<Dependency> {
     }
     // Last entry
     if let (Some(name), Some(version)) = (current_name, current_version) {
-        deps.push(Dependency { name, version, ecosystem: "crates.io".into() });
+        deps.push(Dependency {
+            name,
+            version,
+            ecosystem: "crates.io".into(),
+        });
     }
 
     deps
@@ -320,13 +329,16 @@ async fn query_osv_batch(
     let mut all_vulns = Vec::new();
 
     for chunk in deps.chunks(MAX_BATCH_SIZE) {
-        let queries: Vec<OsvQuery> = chunk.iter().map(|d| OsvQuery {
-            package: OsvPackage {
-                name: d.name.clone(),
-                ecosystem: d.ecosystem.clone(),
-            },
-            version: d.version.clone(),
-        }).collect();
+        let queries: Vec<OsvQuery> = chunk
+            .iter()
+            .map(|d| OsvQuery {
+                package: OsvPackage {
+                    name: d.name.clone(),
+                    ecosystem: d.ecosystem.clone(),
+                },
+                version: d.version.clone(),
+            })
+            .collect();
 
         let request = OsvBatchRequest { queries };
 
@@ -355,7 +367,10 @@ async fn query_osv_batch(
                 for vuln in vulns {
                     all_vulns.push(Vulnerability {
                         id: vuln.id.clone(),
-                        summary: vuln.summary.clone().unwrap_or_else(|| "No description available".into()),
+                        summary: vuln
+                            .summary
+                            .clone()
+                            .unwrap_or_else(|| "No description available".into()),
                         severity: extract_severity(vuln),
                         package: dep.name.clone(),
                         installed_version: dep.version.clone(),
@@ -376,9 +391,15 @@ fn format_deps_audit(result: &DepsAuditResult) -> String {
     let mut lines = vec![
         "# Dependency Audit".to_string(),
         String::new(),
-        format!("**Lockfiles scanned:** {}", result.lockfiles_found.join(", ")),
+        format!(
+            "**Lockfiles scanned:** {}",
+            result.lockfiles_found.join(", ")
+        ),
         format!("**Total dependencies:** {}", result.dependencies_scanned),
-        format!("**Vulnerabilities found:** {}", result.vulnerabilities.len()),
+        format!(
+            "**Vulnerabilities found:** {}",
+            result.vulnerabilities.len()
+        ),
     ];
 
     if result.vulnerabilities.is_empty() && result.errors.is_empty() {
@@ -387,8 +408,16 @@ fn format_deps_audit(result: &DepsAuditResult) -> String {
         return lines.join("\n");
     }
 
-    for severity in &[Severity::Critical, Severity::High, Severity::Medium, Severity::Low, Severity::Unknown] {
-        let vulns: Vec<_> = result.vulnerabilities.iter()
+    for severity in &[
+        Severity::Critical,
+        Severity::High,
+        Severity::Medium,
+        Severity::Low,
+        Severity::Unknown,
+    ] {
+        let vulns: Vec<_> = result
+            .vulnerabilities
+            .iter()
             .filter(|v| v.severity == *severity)
             .collect();
 
@@ -401,7 +430,10 @@ fn format_deps_audit(result: &DepsAuditResult) -> String {
         lines.push(String::new());
 
         for v in &vulns {
-            lines.push(format!("### {} in `{}` v{}", v.id, v.package, v.installed_version));
+            lines.push(format!(
+                "### {} in `{}` v{}",
+                v.id, v.package, v.installed_version
+            ));
             if !v.aliases.is_empty() {
                 lines.push(format!("- **Aliases:** {}", v.aliases.join(", ")));
             }
@@ -538,8 +570,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 }"#;
         let deps = parse_package_lock_json(content);
         assert_eq!(deps.len(), 2);
-        assert!(deps.iter().any(|d| d.name == "lodash" && d.version == "4.17.21"));
-        assert!(deps.iter().any(|d| d.name == "express" && d.version == "4.18.2"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "lodash" && d.version == "4.17.21"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "express" && d.version == "4.18.2"));
     }
 
     #[test]
@@ -547,8 +583,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
         let content = "github.com/pkg/errors v0.9.1 h1:abc123=\ngithub.com/pkg/errors v0.9.1/go.mod h1:def456=\ngolang.org/x/sys v0.5.0 h1:xyz789=\n";
         let deps = parse_go_sum(content);
         assert_eq!(deps.len(), 2); // deduplicated
-        assert!(deps.iter().any(|d| d.name == "github.com/pkg/errors" && d.version == "0.9.1"));
-        assert!(deps.iter().any(|d| d.name == "golang.org/x/sys" && d.version == "0.5.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "github.com/pkg/errors" && d.version == "0.9.1"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "golang.org/x/sys" && d.version == "0.5.0"));
     }
 
     #[test]
@@ -556,8 +596,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
         let content = "# comments\nflask==2.3.1\nrequests==2.31.0\nnumpy>=1.24.0\n-r other.txt\n";
         let deps = parse_requirements_txt(content);
         assert_eq!(deps.len(), 2); // only pinned versions
-        assert!(deps.iter().any(|d| d.name == "flask" && d.version == "2.3.1"));
-        assert!(deps.iter().any(|d| d.name == "requests" && d.version == "2.31.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "flask" && d.version == "2.3.1"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "requests" && d.version == "2.31.0"));
     }
 
     #[test]

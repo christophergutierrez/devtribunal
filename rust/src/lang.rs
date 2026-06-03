@@ -29,8 +29,8 @@ pub const EXTENSION_TO_LANGUAGE: &[(&str, &str)] = &[
 ];
 
 pub const SOURCE_EXTENSIONS: &[&str] = &[
-    "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "php", "cs", "c", "h", "dart", "lua",
-    "sh", "bash", "cpp", "cc", "cxx", "hpp", "hxx", "html", "css", "scss", "less",
+    "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "php", "cs", "c", "h", "dart", "lua", "sh",
+    "bash", "cpp", "cc", "cxx", "hpp", "hxx", "html", "css", "scss", "less",
 ];
 
 pub const SKIP_DIRS: &[&str] = &[
@@ -77,7 +77,10 @@ pub fn overlay_languages_for_path(path: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
 
     // tests: *_test/*_spec/*.test/*.spec stems, or a test directory segment — for source files only.
-    let stem = lower_name.rsplit_once('.').map(|(s, _)| s).unwrap_or(&lower_name);
+    let stem = lower_name
+        .rsplit_once('.')
+        .map(|(s, _)| s)
+        .unwrap_or(&lower_name);
     let stem_is_test = stem.ends_with("_test")
         || stem.ends_with("_spec")
         || stem.ends_with(".test")
@@ -85,14 +88,19 @@ pub fn overlay_languages_for_path(path: &str) -> Vec<&'static str> {
     let in_test_dir = segments
         .iter()
         .any(|s| matches!(*s, "tests" | "test" | "__tests__" | "spec"));
-    if (stem_is_test || lower_name.contains(".test.") || lower_name.contains(".spec.") || in_test_dir)
+    if (stem_is_test
+        || lower_name.contains(".test.")
+        || lower_name.contains(".spec.")
+        || in_test_dir)
         && is_source_file(path)
     {
         out.push("tests");
     }
 
     // migrations: .sql under a migrations/ or migrate/ path segment.
-    let in_migrations = segments.iter().any(|s| matches!(*s, "migrations" | "migrate"));
+    let in_migrations = segments
+        .iter()
+        .any(|s| matches!(*s, "migrations" | "migrate"));
     if lower_name.ends_with(".sql") && in_migrations {
         out.push("migrations");
     }
@@ -105,7 +113,8 @@ pub fn overlay_languages_for_path(path: &str) -> Vec<&'static str> {
         "docker-compose.yml" | "docker-compose.yaml" | "compose.yml" | "compose.yaml"
     );
     let in_workflows = lower.contains(".github/workflows/");
-    let is_workflow = in_workflows && (lower_name.ends_with(".yml") || lower_name.ends_with(".yaml"));
+    let is_workflow =
+        in_workflows && (lower_name.ends_with(".yml") || lower_name.ends_with(".yaml"));
     if is_dockerfile || is_tf || is_compose || is_workflow {
         out.push("config");
     }

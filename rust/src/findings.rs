@@ -180,7 +180,10 @@ Some prose review above.
             r#"{"findings":[{"severity":"high","confidence":"likely","category":"perf","file":"a.rs","line":42,"title":"N+1 Query.","description":"different"}]}"#,
         )
         .unwrap();
-        assert_eq!(a.findings[0].id, b.findings[0].id, "line/description/case must not affect id");
+        assert_eq!(
+            a.findings[0].id, b.findings[0].id,
+            "line/description/case must not affect id"
+        );
 
         // Different title => different id.
         let c = from_json(

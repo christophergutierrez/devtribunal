@@ -125,14 +125,20 @@ fn route_to_backend_config(
         Provider::Host => BackendConfig {
             backend: Backend::Host,
             api_key: None,
-            model: route.model.clone().unwrap_or_else(|| env_default.model.clone()),
+            model: route
+                .model
+                .clone()
+                .unwrap_or_else(|| env_default.model.clone()),
             local_url: None,
             local_model: None,
             fallback_warning: None,
         },
         Provider::Anthropic => {
             let key_env = route.key_env.as_deref().unwrap_or("DEVTRIBUNAL_API_KEY");
-            let model = route.model.clone().unwrap_or_else(|| env_default.model.clone());
+            let model = route
+                .model
+                .clone()
+                .unwrap_or_else(|| env_default.model.clone());
             match env_nonempty(key_env) {
                 Some(api_key) => BackendConfig {
                     backend: Backend::Api,
@@ -333,7 +339,8 @@ mod tests {
 
     #[test]
     fn openai_missing_url_degrades_to_host() {
-        let routing = parse("routes:\n  review_rust:\n    provider: openai\n    model: grok-code\n");
+        let routing =
+            parse("routes:\n  review_rust:\n    provider: openai\n    model: grok-code\n");
         let cfg = resolve_backend_for_agent("review_rust", Some(&routing), &env_default());
         assert_eq!(cfg.backend, Backend::Host);
         assert!(cfg.fallback_warning.unwrap().contains("url"));

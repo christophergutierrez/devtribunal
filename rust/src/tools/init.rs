@@ -14,8 +14,17 @@ const GITIGNORE_ENTRIES: &[&str] = &[
 ];
 
 const SKIP_SCAN_DIRS: &[&str] = &[
-    "node_modules", "target", "vendor", "dist", "build", "__pycache__",
-    ".gradle", ".next", ".nuxt", "coverage", ".nyc_output",
+    "node_modules",
+    "target",
+    "vendor",
+    "dist",
+    "build",
+    "__pycache__",
+    ".gradle",
+    ".next",
+    ".nuxt",
+    "coverage",
+    ".nyc_output",
 ];
 
 fn detect_languages(repo_path: &Path) -> HashSet<String> {
@@ -64,7 +73,8 @@ fn ensure_gitignore(repo_path: &Path, entries: &[&str]) -> Vec<String> {
     if !existing.is_empty() && !existing.ends_with('\n') {
         addition.push('\n');
     }
-    addition.push_str("\n# devtribunal (remove these lines to version-control agents and skills)\n");
+    addition
+        .push_str("\n# devtribunal (remove these lines to version-control agents and skills)\n");
     for entry in &to_add {
         addition.push_str(entry);
         addition.push('\n');
@@ -205,8 +215,12 @@ fn scaffold_skills(repo_path: &Path) -> SkillScaffold {
     let mut out = SkillScaffold::default();
 
     if let Err(e) = std::fs::create_dir_all(&target_dir) {
-        tracing::warn!("failed to create skills directory {}: {e}", target_dir.display());
-        out.results.push("  Failed to create skills directory".to_string());
+        tracing::warn!(
+            "failed to create skills directory {}: {e}",
+            target_dir.display()
+        );
+        out.results
+            .push("  Failed to create skills directory".to_string());
         return out;
     }
 
@@ -218,23 +232,29 @@ fn scaffold_skills(repo_path: &Path) -> SkillScaffold {
             let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
             match classify_managed(&existing) {
                 ManagedState::Pristine(body) if body == canonical => {
-                    out.results.push(format!("  SKIPPED {filename} (already current)"));
+                    out.results
+                        .push(format!("  SKIPPED {filename} (already current)"));
                     out.skipped += 1;
                 }
-                ManagedState::Pristine(_) => match std::fs::write(&target_path, stamp_managed(content)) {
-                    Ok(_) => {
-                        out.results.push(format!("  UPDATED {filename} (refreshed — was an older devtribunal version)"));
-                        out.updated += 1;
+                ManagedState::Pristine(_) => {
+                    match std::fs::write(&target_path, stamp_managed(content)) {
+                        Ok(_) => {
+                            out.results.push(format!("  UPDATED {filename} (refreshed — was an older devtribunal version)"));
+                            out.updated += 1;
+                        }
+                        Err(e) => out.results.push(format!("  ERROR   {filename}: {e}")),
                     }
-                    Err(e) => out.results.push(format!("  ERROR   {filename}: {e}")),
-                },
+                }
                 ManagedState::UserEdited => {
-                    out.results.push(format!("  SKIPPED {filename} (user-edited — left as is)"));
+                    out.results
+                        .push(format!("  SKIPPED {filename} (user-edited — left as is)"));
                     out.skipped += 1;
                     out.user_edited.push(filename.to_string());
                 }
                 ManagedState::Unmanaged => {
-                    out.results.push(format!("  SKIPPED {filename} (no managed marker — left as is)"));
+                    out.results.push(format!(
+                        "  SKIPPED {filename} (no managed marker — left as is)"
+                    ));
                     out.skipped += 1;
                     out.unmanaged.push(filename.to_string());
                 }
@@ -275,7 +295,11 @@ struct RoutingScaffold {
 }
 
 fn stamp_routing(content: &str) -> String {
-    stamp_managed_with(content, YAML_MANAGED_MARKER_PREFIX, YAML_MANAGED_MARKER_SUFFIX)
+    stamp_managed_with(
+        content,
+        YAML_MANAGED_MARKER_PREFIX,
+        YAML_MANAGED_MARKER_SUFFIX,
+    )
 }
 
 /// Scaffold (or refresh) the version-controlled `.devtribunal.yml` at the repo root.
@@ -287,25 +311,35 @@ fn scaffold_routing_config(repo_path: &Path) -> RoutingScaffold {
 
     if target_path.exists() {
         let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
-        match classify_managed_with(&existing, YAML_MANAGED_MARKER_PREFIX, YAML_MANAGED_MARKER_SUFFIX) {
+        match classify_managed_with(
+            &existing,
+            YAML_MANAGED_MARKER_PREFIX,
+            YAML_MANAGED_MARKER_SUFFIX,
+        ) {
             ManagedState::Pristine(body) if body == canonical => {
-                out.results.push("  SKIPPED .devtribunal.yml (already current)".to_string());
+                out.results
+                    .push("  SKIPPED .devtribunal.yml (already current)".to_string());
                 out.skipped += 1;
             }
-            ManagedState::Pristine(_) => match std::fs::write(&target_path, stamp_routing(ROUTING_TEMPLATE)) {
-                Ok(_) => {
-                    out.results.push("  UPDATED .devtribunal.yml (refreshed — was an older devtribunal version)".to_string());
-                    out.updated += 1;
+            ManagedState::Pristine(_) => {
+                match std::fs::write(&target_path, stamp_routing(ROUTING_TEMPLATE)) {
+                    Ok(_) => {
+                        out.results.push("  UPDATED .devtribunal.yml (refreshed — was an older devtribunal version)".to_string());
+                        out.updated += 1;
+                    }
+                    Err(e) => out.results.push(format!("  ERROR   .devtribunal.yml: {e}")),
                 }
-                Err(e) => out.results.push(format!("  ERROR   .devtribunal.yml: {e}")),
-            },
+            }
             ManagedState::UserEdited => {
-                out.results.push("  SKIPPED .devtribunal.yml (user-edited — left as is)".to_string());
+                out.results
+                    .push("  SKIPPED .devtribunal.yml (user-edited — left as is)".to_string());
                 out.skipped += 1;
                 out.user_edited = true;
             }
             ManagedState::Unmanaged => {
-                out.results.push("  SKIPPED .devtribunal.yml (no managed marker — left as is)".to_string());
+                out.results.push(
+                    "  SKIPPED .devtribunal.yml (no managed marker — left as is)".to_string(),
+                );
                 out.skipped += 1;
                 out.unmanaged = true;
             }
@@ -392,7 +426,9 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
             // Check source: custom
             if let Ok(agent) = parse_agent(filename, &existing_raw) {
                 if agent.source.as_deref() == Some("custom") {
-                    results.push(format!("  SKIPPED {filename} (source: custom — user-created)"));
+                    results.push(format!(
+                        "  SKIPPED {filename} (source: custom — user-created)"
+                    ));
                     skipped += 1;
                     continue;
                 }
@@ -404,7 +440,9 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
                 continue;
             }
 
-            results.push(format!("  SKIPPED {filename} (modified by user — won't overwrite)"));
+            results.push(format!(
+                "  SKIPPED {filename} (modified by user — won't overwrite)"
+            ));
             skipped += 1;
             continue;
         }
@@ -511,14 +549,17 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
         summary.push(String::new());
         summary.push("## .mcp.json".to_string());
         summary.push("  Added devtribunal MCP server entry (project-scope).".to_string());
-        summary.push("  Claude Code will load devtribunal only when working in this repo.".to_string());
+        summary.push(
+            "  Claude Code will load devtribunal only when working in this repo.".to_string(),
+        );
     }
 
     if !gitignore_added.is_empty() {
         summary.push(String::new());
         summary.push("## .gitignore".to_string());
         summary.push(format!("  Added: {}", gitignore_added.join(", ")));
-        summary.push("  These paths are gitignored by default (no trace in your repo).".to_string());
+        summary
+            .push("  These paths are gitignored by default (no trace in your repo).".to_string());
     }
 
     if total_written > 0 {
@@ -564,12 +605,18 @@ mod tests {
     fn edited_body_classifies_as_user_edited() {
         let on_disk = stamp_managed("original body\n");
         let edited = on_disk.replace("original body", "user changed this");
-        assert!(matches!(classify_managed(&edited), ManagedState::UserEdited));
+        assert!(matches!(
+            classify_managed(&edited),
+            ManagedState::UserEdited
+        ));
     }
 
     #[test]
     fn no_marker_classifies_as_unmanaged() {
-        assert!(matches!(classify_managed("just a file\nno marker\n"), ManagedState::Unmanaged));
+        assert!(matches!(
+            classify_managed("just a file\nno marker\n"),
+            ManagedState::Unmanaged
+        ));
     }
 
     #[test]
@@ -594,11 +641,17 @@ mod tests {
         let skill_dir = dir.join(".claude").join("commands").join("dt");
         let (first_name, _) = embedded_skills()[0];
         let path = skill_dir.join(first_name);
-        let edited = std::fs::read_to_string(&path).unwrap().replace("devtribunal", "MYCUSTOM");
+        let edited = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("devtribunal", "MYCUSTOM");
         std::fs::write(&path, &edited).unwrap();
         let third = scaffold_skills(&dir);
         assert!(third.user_edited.contains(&first_name.to_string()));
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), edited, "user-edited file must not be overwritten");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            edited,
+            "user-edited file must not be overwritten"
+        );
 
         // A pristine-but-outdated file → refreshed (UPDATED), not flagged.
         let (second_name, second_content) = embedded_skills()[1];
@@ -650,8 +703,14 @@ mod tests {
         let routing = crate::routing::load_routing(dir_str, true)
             .expect("scaffolded .devtribunal.yml must parse (marker is a valid YAML comment)");
         // Behavior-neutral template: no active routes, no default → every agent uses env config.
-        assert!(routing.routes.is_empty(), "template ships with no active routes");
-        assert!(routing.default.is_none(), "template ships with no active default");
+        assert!(
+            routing.routes.is_empty(),
+            "template ships with no active routes"
+        );
+        assert!(
+            routing.default.is_none(),
+            "template ships with no active default"
+        );
 
         // .devtribunal.yml must not have been added to .gitignore.
         let gitignore = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap_or_default();
@@ -689,12 +748,18 @@ mod tests {
         );
 
         // 4) User-edited (marker present, body changed) → preserved + flagged.
-        let edited = std::fs::read_to_string(&cfg_path).unwrap().replace("routes: {}", "routes: {} # mine");
+        let edited = std::fs::read_to_string(&cfg_path)
+            .unwrap()
+            .replace("routes: {}", "routes: {} # mine");
         std::fs::write(&cfg_path, &edited).unwrap();
         let fourth = scaffold_routing_config(dir.path());
         assert!(fourth.user_edited);
         assert_eq!(fourth.skipped, 1);
-        assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), edited, "user-edited config must not be overwritten");
+        assert_eq!(
+            std::fs::read_to_string(&cfg_path).unwrap(),
+            edited,
+            "user-edited config must not be overwritten"
+        );
 
         // 5) Unmanaged (no marker) → preserved + flagged.
         std::fs::write(&cfg_path, "routes: {}\n").unwrap();

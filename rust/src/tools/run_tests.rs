@@ -201,9 +201,18 @@ mod tests {
 
     #[test]
     fn parses_counts_across_frameworks() {
-        assert_eq!(parse_counts("test result: ok. 5 passed; 0 failed; 0 ignored"), (Some(5), Some(0)));
-        assert_eq!(parse_counts("===== 3 failed, 2 passed in 0.1s ====="), (Some(2), Some(3)));
-        assert_eq!(parse_counts("Tests: 1 failed, 5 passed, 6 total"), (Some(5), Some(1)));
+        assert_eq!(
+            parse_counts("test result: ok. 5 passed; 0 failed; 0 ignored"),
+            (Some(5), Some(0))
+        );
+        assert_eq!(
+            parse_counts("===== 3 failed, 2 passed in 0.1s ====="),
+            (Some(2), Some(3))
+        );
+        assert_eq!(
+            parse_counts("Tests: 1 failed, 5 passed, 6 total"),
+            (Some(5), Some(1))
+        );
         assert_eq!(parse_counts("no counts here"), (None, None));
     }
 

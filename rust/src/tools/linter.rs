@@ -199,11 +199,7 @@ fn parse_text_output(tool: &RecommendedTool, stdout: &str, stderr: &str) -> Vec<
     }]
 }
 
-fn parse_linter_output(
-    tool: &RecommendedTool,
-    stdout: &str,
-    stderr: &str,
-) -> Vec<LinterFinding> {
+fn parse_linter_output(tool: &RecommendedTool, stdout: &str, stderr: &str) -> Vec<LinterFinding> {
     if tool.output_format.is_empty() {
         return Vec::new();
     }
@@ -234,7 +230,8 @@ pub fn format_linter_findings(result: &LinterRunResult) -> String {
                 String::new()
             };
             lines.push(format!(
-                "**{}** [{}] {}{}", f.tool, f.severity, location, f.message
+                "**{}** [{}] {}{}",
+                f.tool, f.severity, location, f.message
             ));
         }
     } else {
@@ -243,7 +240,10 @@ pub fn format_linter_findings(result: &LinterRunResult) -> String {
 
     if !result.skipped.is_empty() {
         lines.push(String::new());
-        lines.push(format!("**Not installed (skipped):** {}", result.skipped.join(", ")));
+        lines.push(format!(
+            "**Not installed (skipped):** {}",
+            result.skipped.join(", ")
+        ));
     }
 
     if !result.errors.is_empty() {
@@ -433,7 +433,11 @@ mod tests {
 
     #[test]
     fn test_strip_redirections() {
-        let args = vec!["--flag".to_string(), "2>&1".to_string(), "file.ts".to_string()];
+        let args = vec![
+            "--flag".to_string(),
+            "2>&1".to_string(),
+            "file.ts".to_string(),
+        ];
         let (clean, merge) = strip_redirections(&args);
         assert_eq!(clean, vec!["--flag", "file.ts"]);
         assert!(merge);

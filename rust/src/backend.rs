@@ -135,7 +135,8 @@ pub fn load_config() -> BackendConfig {
 pub fn mode_indicator(config: &BackendConfig) -> String {
     match config.backend {
         Backend::Host => {
-            "[devtribunal \u{00b7} host mode \u{00b7} review processed by your Claude session]".to_string()
+            "[devtribunal \u{00b7} host mode \u{00b7} review processed by your Claude session]"
+                .to_string()
         }
         Backend::Api => {
             format!(
@@ -407,7 +408,10 @@ mod tests {
         let config = load_config();
         assert_eq!(config.backend, Backend::Local);
         assert!(config.fallback_warning.is_none());
-        assert_eq!(config.local_url.as_deref(), Some("http://localhost:11434/v1"));
+        assert_eq!(
+            config.local_url.as_deref(),
+            Some("http://localhost:11434/v1")
+        );
         assert_eq!(config.local_model.as_deref(), Some("qwen3:32b"));
 
         clear_env();
@@ -487,7 +491,10 @@ mod tests {
 
     #[test]
     fn test_bearer_header() {
-        assert_eq!(bearer_header(Some("sk-123")).as_deref(), Some("Bearer sk-123"));
+        assert_eq!(
+            bearer_header(Some("sk-123")).as_deref(),
+            Some("Bearer sk-123")
+        );
         assert_eq!(bearer_header(Some("   ")), None);
         assert_eq!(bearer_header(None), None);
     }
