@@ -100,7 +100,7 @@ No subcommand starts the MCP server (used by Claude Code automatically).
 
 AI assistants call devtribunal's review tools via MCP and get back structured, severity-rated findings — not freeform opinions. Multiple specialists can be composed and synthesized by three orchestrator agents (Architect, Project Docs Auditor, and Manager) into prioritized action plans.
 
-**12 specialist agents** covering 13 languages:
+**18 specialist agents** covering 13+ source kinds (languages, plus path/filename-routed specialists for migrations, tests, and config):
 
 | Agent | Languages | Linters |
 |-------|-----------|---------|
@@ -131,14 +131,17 @@ AI assistants call devtribunal's review tools via MCP and get back structured, s
 **1 documentation auditor:**
 - `check_docs` — reviews README, docstrings, and inline comments for accuracy and staleness
 
-**7 management tools:**
-- `dt_init` — scaffolds agent definitions and skill commands into a target repo
+**10 management tools:**
+- `dt_init` — scaffolds agent definitions, skill commands, `.devtribunal.yml`, and a portable `AGENTS.md` into a target repo
 - `check_tools` — checks which recommended linters are installed
 - `blast_radius` — diff-aware impact analysis: changed symbols + files that depend on them
 - `check_tracking` — git hygiene audit: tracked secrets/artifacts, ignored source files, with fix commands
 - `check_deps` — dependency vulnerability scan via OSV.dev batch API
 - `check_patterns` — cross-file structural analysis: circular deps, dead exports, duplicated literals
 - `check_tests` — test adequacy detection + optional test execution with parsed results
+- `run_tests` — runs the project's test command in a sandboxed shell and parses pass/fail
+- `check_secrets` — gitleaks-backed scan for planted/forgotten credentials in the changeset
+- `diff_findings` — given two passes of structured findings, emits fixed / persisting / new / regressed + a PASS/FAIL verdict (used by the `dt:converge` loop)
 
 ## Pipeline
 
@@ -303,21 +306,50 @@ Key design decisions:
 
 ## Configuration
 
-Set environment variables to control the review backend:
+Set `DEVTRIBUNAL_BACKEND` (and a few siblings) to pick how reviews are processed. Anything not matching a row below falls back to **host** mode.
 
-```sh
-# Default: host LLM processes reviews (no extra cost beyond your Claude session)
-DEVTRIBUNAL_BACKEND=host
+| Mode | `DEVTRIBUNAL_BACKEND=` | When to use | Required env vars |
+|------|-----------------------|-------------|--------------------|
+| host (default) | unset, `host`, or anything unrecognized | The calling LLM (Claude Code, Codex, …) processes the prompt itself. No extra cost beyond your session. | — |
+| anthropic | `api` | Server calls the Anthropic Messages API directly and returns finished findings. | `DEVTRIBUNAL_API_KEY`, `DEVTRIBUNAL_MODEL` (defaults to `claude-sonnet-4-20250514`) |
+| openai-compatible (remote, keyed) | `openai` | Server calls any OpenAI-compatible endpoint with `Authorization: Bearer …` — OpenAI / xAI (Grok) / OpenRouter / a remote vLLM. | `DEVTRIBUNAL_API_URL`, `DEVTRIBUNAL_API_KEY`, `DEVTRIBUNAL_MODEL` |
+| openai-compatible (local, keyless) | `local` | Server calls a local OpenAI-compatible endpoint — Ollama / vLLM / llama.cpp. No key header is sent. | `DEVTRIBUNAL_LOCAL_URL`, `DEVTRIBUNAL_LOCAL_MODEL` |
 
-# Anthropic API: devtribunal calls Claude directly, returns finished findings
-DEVTRIBUNAL_BACKEND=api
-DEVTRIBUNAL_API_KEY=sk-ant-...
-DEVTRIBUNAL_MODEL=claude-sonnet-4-20250514  # optional, defaults to claude-sonnet-4-20250514
+Missing-required-var cases fall back to host mode with a warning naming the missing var. Every review result is prefixed with the active mode (e.g. `[devtribunal · openai mode · grok-code @ api.x.ai]`) so you always know what processed your code.
 
-# Local model: devtribunal calls an OpenAI-compatible endpoint
-DEVTRIBUNAL_BACKEND=local
-DEVTRIBUNAL_LOCAL_URL=http://localhost:11434/v1
-DEVTRIBUNAL_LOCAL_MODEL=qwen3:32b
+## Per-agent model routing
+
+`dt_init` writes a version-controlled `.devtribunal.yml` at your repo root. Edit it to send different specialists to different models without changing any code. Routing is **backend mode only** — in host mode the calling agent picks the model, so the file is informational.
+
+Precedence: `routes[agent] > default > server env config`.
+
+```yaml
+# .devtribunal.yml — route two specialists to two different providers
+default:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  key_env: ANTHROPIC_API_KEY      # NAME of an env var holding the key (not the key itself)
+
+routes:
+  review_rust:                     # one specialist → xAI Grok (keyed remote)
+    provider: openai
+    model: grok-code
+    url: https://api.x.ai/v1
+    key_env: XAI_API_KEY
+  review_python:                   # another specialist → local Ollama (keyless)
+    provider: openai
+    model: hermes-3-llama-3.1-8b
+    url: http://localhost:11434/v1
+  architect:                       # orchestrator → host (no server-side LLM call)
+    provider: host
 ```
 
-Every review result is prefixed with the active mode so you always know what's processing your code.
+Providers: `host` (no server-side call), `anthropic` (Anthropic Messages API), `openai` (any OpenAI-compatible endpoint — keyed via `key_env` or keyless if omitted). Misconfiguration — missing `url`/`model`, or a `key_env` whose variable is unset — degrades that single route to host mode and prepends a warning to that tool's output (no silent wrong-call). A malformed file is logged and treated as absent (env config preserved).
+
+## Host integration
+
+**Claude Code** is the primary host: `dt_init` scaffolds `.mcp.json` and the `/dt:` slash-command skills (`dt:full`, `dt:converge`, `dt:incremental-*`) under `.claude/commands/dt/`. Nothing else to do.
+
+**Other MCP-aware hosts (Codex, Antigravity, Grok, …)** read a repo-root **`AGENTS.md`**, which `dt_init` also scaffolds. That file is the portable form of `dt:full` + `dt:converge` expressed as plain MCP tool calls, with a per-host MCP-setup appendix (Codex `~/.codex/config.toml`, Antigravity, Grok). See `AGENTS.md` for the up-to-date snippets — not duplicated here so the two stay in sync.
+
+**Hermes** isn't a separate host — it's a backend model. Use whichever MCP host you already use and route specialists to a local Ollama/vLLM endpoint via `.devtribunal.yml` (`provider: openai`, no `key_env` = keyless), as shown in the routing example above.
