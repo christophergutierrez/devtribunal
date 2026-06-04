@@ -281,9 +281,10 @@ fn scaffold_skills(repo_path: &Path) -> SkillScaffold {
 // the Phase-21 routing parser reads it cleanly.
 
 const ROUTING_TEMPLATE: &str = include_str!("../../../templates/devtribunal.yml");
+const AGENTS_TEMPLATE: &str = include_str!("../../../templates/AGENTS.md");
 
 #[derive(Default)]
-struct RoutingScaffold {
+struct ManagedFileScaffold {
     results: Vec<String>,
     written: usize,
     updated: usize,
@@ -304,10 +305,10 @@ fn stamp_routing(content: &str) -> String {
 
 /// Scaffold (or refresh) the version-controlled `.devtribunal.yml` at the repo root.
 /// Mirrors `scaffold_skills` provenance handling; never gitignored.
-fn scaffold_routing_config(repo_path: &Path) -> RoutingScaffold {
+fn scaffold_routing_config(repo_path: &Path) -> ManagedFileScaffold {
     let target_path = repo_path.join(".devtribunal.yml");
     let canonical = ROUTING_TEMPLATE.trim_end();
-    let mut out = RoutingScaffold::default();
+    let mut out = ManagedFileScaffold::default();
 
     if target_path.exists() {
         let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
@@ -353,6 +354,65 @@ fn scaffold_routing_config(repo_path: &Path) -> RoutingScaffold {
             out.written += 1;
         }
         Err(e) => out.results.push(format!("  ERROR   .devtribunal.yml: {e}")),
+    }
+    out
+}
+
+// --- Portable workflow doc (AGENTS.md) ---
+//
+// Same lifecycle as the routing config: version-controlled, never gitignored,
+// scaffolded at the repo root. Markdown, so it uses the HTML-comment marker.
+
+fn stamp_agents(content: &str) -> String {
+    stamp_managed_with(content, MANAGED_MARKER_PREFIX, MANAGED_MARKER_SUFFIX)
+}
+
+/// Scaffold (or refresh) the version-controlled `AGENTS.md` at the repo root.
+fn scaffold_agents_md(repo_path: &Path) -> ManagedFileScaffold {
+    let target_path = repo_path.join("AGENTS.md");
+    let canonical = AGENTS_TEMPLATE.trim_end();
+    let mut out = ManagedFileScaffold::default();
+
+    if target_path.exists() {
+        let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
+        match classify_managed_with(&existing, MANAGED_MARKER_PREFIX, MANAGED_MARKER_SUFFIX) {
+            ManagedState::Pristine(body) if body == canonical => {
+                out.results
+                    .push("  SKIPPED AGENTS.md (already current)".to_string());
+                out.skipped += 1;
+            }
+            ManagedState::Pristine(_) => match std::fs::write(&target_path, stamp_agents(AGENTS_TEMPLATE)) {
+                Ok(_) => {
+                    out.results.push(
+                        "  UPDATED AGENTS.md (refreshed — was an older devtribunal version)"
+                            .to_string(),
+                    );
+                    out.updated += 1;
+                }
+                Err(e) => out.results.push(format!("  ERROR   AGENTS.md: {e}")),
+            },
+            ManagedState::UserEdited => {
+                out.results
+                    .push("  SKIPPED AGENTS.md (user-edited — left as is)".to_string());
+                out.skipped += 1;
+                out.user_edited = true;
+            }
+            ManagedState::Unmanaged => {
+                out.results
+                    .push("  SKIPPED AGENTS.md (no managed marker — left as is)".to_string());
+                out.skipped += 1;
+                out.unmanaged = true;
+            }
+        }
+        return out;
+    }
+
+    match std::fs::write(&target_path, stamp_agents(AGENTS_TEMPLATE)) {
+        Ok(_) => {
+            out.results.push("  WROTE   AGENTS.md".to_string());
+            out.written += 1;
+        }
+        Err(e) => out.results.push(format!("  ERROR   AGENTS.md: {e}")),
     }
     out
 }
@@ -464,6 +524,9 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
     // Scaffold the version-controlled routing config (.devtribunal.yml) — NOT gitignored.
     let routing_cfg = scaffold_routing_config(repo);
 
+    // Scaffold the portable workflow doc (AGENTS.md) — NOT gitignored.
+    let agents_md = scaffold_agents_md(repo);
+
     // Ensure .mcp.json has devtribunal entry
     let mcp_json_added = ensure_mcp_json(repo);
 
@@ -541,6 +604,29 @@ pub fn execute_init(repo_path: &str, languages: Option<&[String]>) -> ToolResult
         summary.push(
             "  ⚠ .devtribunal.yml carries no devtribunal marker (older version or hand-created), so \
              it was not overwritten. If you have not customized it, delete it and re-run dt_init."
+                .to_string(),
+        );
+    }
+
+    summary.push(String::new());
+    summary.push("## Portable workflow → AGENTS.md".to_string());
+    summary.extend(agents_md.results.clone());
+    summary.push(
+        "  Version-controlled (committed, NOT gitignored). Lets any MCP-aware host (Codex, \
+         Antigravity, Grok, …) drive devtribunal end-to-end without Claude-Code-specific skills."
+            .to_string(),
+    );
+    if agents_md.user_edited {
+        summary.push(
+            "  ⚠ You edited AGENTS.md, so it was not refreshed. Review the latest template \
+             (templates/AGENTS.md) and merge manually."
+                .to_string(),
+        );
+    }
+    if agents_md.unmanaged {
+        summary.push(
+            "  ⚠ AGENTS.md carries no devtribunal marker (older version or hand-created), so it \
+             was not overwritten. If you have not customized it, delete it and re-run dt_init."
                 .to_string(),
         );
     }
@@ -766,5 +852,118 @@ mod tests {
         let fifth = scaffold_routing_config(dir.path());
         assert!(fifth.unmanaged);
         assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), "routes: {}\n");
+    }
+
+    // --- Phase 23: portable AGENTS.md scaffolding ---
+
+    #[test]
+    fn agents_template_covers_required_content() {
+        let t = AGENTS_TEMPLATE;
+        // Workflows named by their skill aliases.
+        assert!(t.contains("dt:full"), "template must reference the dt:full workflow");
+        assert!(t.contains("dt:converge"), "template must reference the dt:converge workflow");
+        // Every management tool listed in serve_stdio's banner must appear.
+        for tool in [
+            "dt_init",
+            "check_tools",
+            "blast_radius",
+            "check_tracking",
+            "check_deps",
+            "check_patterns",
+            "check_tests",
+            "run_tests",
+            "check_secrets",
+            "diff_findings",
+        ] {
+            assert!(t.contains(tool), "AGENTS.md missing management tool: {tool}");
+        }
+        // Orchestrators + at least one specialist example.
+        assert!(t.contains("architect"));
+        assert!(t.contains("manager"));
+        assert!(t.contains("review_rust"));
+        // Per-host appendix entries (case-insensitive).
+        let lower = t.to_lowercase();
+        for host in ["codex", "antigravity", "grok", "hermes"] {
+            assert!(lower.contains(host), "AGENTS.md missing host section: {host}");
+        }
+    }
+
+    #[test]
+    fn init_writes_marked_agents_md() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_str = dir.path().to_str().unwrap();
+
+        let result = execute_init(dir_str, Some(&["rust".to_string()]));
+        assert!(!result.is_error);
+
+        let agents_path = dir.path().join("AGENTS.md");
+        assert!(agents_path.is_file(), "AGENTS.md should be written");
+
+        let on_disk = std::fs::read_to_string(&agents_path).unwrap();
+        let last = on_disk.trim_end().lines().last().unwrap();
+        assert!(
+            last.starts_with(MANAGED_MARKER_PREFIX) && last.ends_with(MANAGED_MARKER_SUFFIX),
+            "AGENTS.md must end with the HTML-comment provenance marker, got: {last}"
+        );
+
+        // AGENTS.md is version-controlled — must not be added to .gitignore.
+        let gitignore = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap_or_default();
+        assert!(
+            !gitignore.lines().any(|l| l.trim() == "AGENTS.md"),
+            "AGENTS.md must not be gitignored, .gitignore was:\n{gitignore}"
+        );
+        // The existing GITIGNORE_ENTRIES boundary still holds.
+        assert!(!GITIGNORE_ENTRIES.contains(&"AGENTS.md"));
+    }
+
+    #[test]
+    fn agents_scaffold_write_refresh_preserve_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("AGENTS.md");
+
+        // 1) First scaffold → written.
+        let first = scaffold_agents_md(dir.path());
+        assert_eq!(first.written, 1);
+        assert_eq!(first.skipped, 0);
+
+        // 2) Re-run unchanged → skipped (current).
+        let second = scaffold_agents_md(dir.path());
+        assert_eq!(second.written, 0);
+        assert_eq!(second.updated, 0);
+        assert_eq!(second.skipped, 1);
+        assert!(!second.user_edited && !second.unmanaged);
+
+        // 3) Pristine-but-stale → refreshed (UPDATED) back to canonical.
+        std::fs::write(&path, stamp_agents("# old workflow doc\n")).unwrap();
+        let third = scaffold_agents_md(dir.path());
+        assert_eq!(third.updated, 1);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            stamp_agents(AGENTS_TEMPLATE),
+            "pristine outdated AGENTS.md must be refreshed to the current template"
+        );
+
+        // 4) User-edited (marker present, body changed) → preserved + flagged.
+        let edited = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("devtribunal", "MYCUSTOM");
+        std::fs::write(&path, &edited).unwrap();
+        let fourth = scaffold_agents_md(dir.path());
+        assert!(fourth.user_edited);
+        assert_eq!(fourth.skipped, 1);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            edited,
+            "user-edited AGENTS.md must not be overwritten"
+        );
+
+        // 5) Unmanaged (no marker) → preserved + flagged.
+        std::fs::write(&path, "# hand-written AGENTS.md\n").unwrap();
+        let fifth = scaffold_agents_md(dir.path());
+        assert!(fifth.unmanaged);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# hand-written AGENTS.md\n"
+        );
     }
 }
